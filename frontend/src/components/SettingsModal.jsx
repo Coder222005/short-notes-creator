@@ -1,183 +1,340 @@
 import React, { useState, useEffect } from 'react';
 
-const PROVIDER_DEFAULT_MODELS = {
-  fallback: 'Offline Summary (No Key Required)',
-  auto: 'Auto-Rotate Across Keys',
-  openrouter: 'google/gemini-2.5-flash:free',
-  gemini: 'gemini-1.5-flash',
-  groq: 'llama-3.1-8b-instant'
-};
-
-const MODEL_OPTIONS = {
-  auto: [
-    { value: 'auto', label: 'Dynamic Rotation (Key Priority Chain)' }
-  ],
-  openrouter: [
-    { value: 'google/gemini-2.5-flash:free', label: 'Gemini 2.5 Flash (Free)' },
-    { value: 'meta-llama/llama-3-8b-instruct:free', label: 'Llama 3 8B Instruct (Free)' },
-    { value: 'mistralai/mistral-7b-instruct:free', label: 'Mistral 7B Instruct (Free)' },
-    { value: 'openchat/openchat-7b:free', label: 'OpenChat 7B (Free)' }
-  ],
-  gemini: [
-    { value: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash' },
-    { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
-    { value: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro' }
-  ],
-  groq: [
-    { value: 'llama-3.1-8b-instant', label: 'Llama 3.1 8B (Fast, Free Tier)' },
-    { value: 'llama3-70b-8192', label: 'Llama 3 70B' },
-    { value: 'mixtral-8x7b-32768', label: 'Mixtral 8x7B' }
-  ],
-  fallback: [
-    { value: 'fallback', label: 'Rule-Based Local Synthesizer' }
-  ]
+const PLATFORM_MAP = {
+  google: 'Google Gemini',
+  groq: 'Groq Cloud',
+  cerebras: 'Cerebras Systems',
+  sambanova: 'SambaNova Systems',
+  nvidia: 'NVIDIA NIM',
+  mistral: 'Mistral AI',
+  openrouter: 'OpenRouter',
+  github: 'GitHub Models',
+  cohere: 'Cohere',
+  cloudflare: 'Cloudflare Workers AI',
+  zhipu: 'Z.ai (Zhipu)',
+  huggingface: 'HuggingFace Inference',
+  ollama: 'Ollama (Local)',
+  kilo: 'Kilo',
+  pollinations: 'Pollinations.ai',
+  llm7: 'LLM7'
 };
 
 export default function SettingsModal({ isOpen, onClose, currentSettings, onSaveSettings }) {
-  const [activeTab, setActiveTab] = useState('session'); // 'session' | 'vault' | 'analytics'
+  const [activeTab, setActiveTab] = useState('session'); // 'session' | 'keys' | 'fallback' | 'analytics' | 'unified'
   const [provider, setProvider] = useState('fallback');
-  const [model, setModel] = useState('fallback');
+  const [model, setModel] = useState('auto');
 
-  // Vault state
-  const [priority, setPriority] = useState(['gemini', 'groq', 'openrouter']);
-  const [vaultKeys, setVaultKeys] = useState({
-    gemini: '',
-    groq: '',
-    openrouter: ''
-  });
-  const [isLoadingKeys, setIsLoadingKeys] = useState(false);
+  // API Lists and States
+  const [modelsList, setModelsList] = useState([]);
+  const [keysList, setKeysList] = useState([]);
+  const [fallbackChain, setFallbackChain] = useState([]);
+  const [unifiedApiKey, setUnifiedApiKey] = useState('');
+  
+  // Form input states for adding a key
+  const [newKeyPlatform, setNewKeyPlatform] = useState('google');
+  const [newKeyVal, setNewKeyVal] = useState('');
+  const [newKeyLabel, setNewKeyLabel] = useState('');
+  const [isAddingKey, setIsAddingKey] = useState(false);
 
-  // Analytics state
-  const [stats, setStats] = useState({
-    totalRequests: 0,
-    geminiRequests: 0,
-    groqRequests: 0,
-    openrouterRequests: 0,
-    fallbackRequests: 0,
-    lastRoutedVia: 'None'
-  });
-  const [isLoadingStats, setIsLoadingStats] = useState(false);
+  // Analytics states
+  const [analyticsRange, setAnalyticsRange] = useState('7d');
+  const [analyticsSummary, setAnalyticsSummary] = useState(null);
+  const [analyticsByModel, setAnalyticsByModel] = useState([]);
+  const [analyticsByPlatform, setAnalyticsByPlatform] = useState([]);
+  const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(false);
+
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Helper to resolve proxy endpoint address
+  const getUrl = (subpath) => {
+    const isDev = window.location.port === '5173' || window.location.port === '5174';
+    const base = isDev ? 'http://localhost:3000' : '';
+    return `${base}/proxy-api${subpath}`;
+  };
 
   // Sync settings when modal opens
   useEffect(() => {
     if (isOpen) {
       setProvider(currentSettings.provider || 'fallback');
-      setModel(currentSettings.model || 'fallback');
-      fetchVaultKeys();
-      if (activeTab === 'analytics') {
-        fetchStats();
-      }
+      setModel(currentSettings.model || 'auto');
+      fetchAllData();
     }
-  }, [currentSettings, isOpen, activeTab]);
+  }, [isOpen, currentSettings]);
 
-  const fetchVaultKeys = async () => {
-    setIsLoadingKeys(true);
+  // Refetch analytics when range or tab changes
+  useEffect(() => {
+    if (isOpen && activeTab === 'analytics') {
+      fetchAnalytics();
+    }
+  }, [isOpen, activeTab, analyticsRange]);
+
+  const fetchAllData = async () => {
+    setIsLoading(true);
     try {
-      const keysApiUrl = window.location.port === '5174' ? 'http://localhost:3000/api/keys' : '/api/keys';
-      const res = await fetch(keysApiUrl);
+      await Promise.all([
+        fetchModels(),
+        fetchKeys(),
+        fetchFallbackChain(),
+        fetchUnifiedKey()
+      ]);
+    } catch (e) {
+      console.error('Failed to load proxy settings:', e);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const fetchModels = async () => {
+    try {
+      const res = await fetch(getUrl('/models'));
       if (res.ok) {
         const data = await res.json();
-        setVaultKeys(data.keys || { gemini: '', groq: '', openrouter: '' });
-        setPriority(data.priority || ['gemini', 'groq', 'openrouter']);
+        setModelsList(data);
       }
     } catch (e) {
-      console.error('Failed to load keys vault:', e);
-    } finally {
-      setIsLoadingKeys(false);
+      console.error('Failed to load models:', e);
     }
   };
 
-  const fetchStats = async () => {
-    setIsLoadingStats(true);
+  const fetchKeys = async () => {
     try {
-      const statsApiUrl = window.location.port === '5174' ? 'http://localhost:3000/api/stats' : '/api/stats';
-      const res = await fetch(statsApiUrl);
+      const res = await fetch(getUrl('/keys'));
       if (res.ok) {
         const data = await res.json();
-        setStats(data);
+        setKeysList(data);
       }
     } catch (e) {
-      console.error('Failed to load stats:', e);
-    } finally {
-      setIsLoadingStats(false);
+      console.error('Failed to load keys:', e);
     }
   };
 
-  const handleResetStats = async () => {
-    if (confirm('Are you sure you want to reset all usage analytics?')) {
-      try {
-        const statsResetUrl = window.location.port === '5174' ? 'http://localhost:3000/api/stats/reset' : '/api/stats/reset';
-        const res = await fetch(statsResetUrl, { method: 'POST' });
-        if (res.ok) {
-          const data = await res.json();
-          setStats(data);
-        }
-      } catch (e) {
-        console.error('Failed to reset stats:', e);
+  const fetchFallbackChain = async () => {
+    try {
+      const res = await fetch(getUrl('/fallback'));
+      if (res.ok) {
+        const data = await res.json();
+        // Sort by priority ASC
+        data.sort((a, b) => a.priority - b.priority);
+        setFallbackChain(data);
       }
+    } catch (e) {
+      console.error('Failed to load fallback chain:', e);
     }
   };
 
-  const handleProviderChange = (newProvider) => {
-    setProvider(newProvider);
-    setModel(PROVIDER_DEFAULT_MODELS[newProvider]);
-  };
-
-  const handleKeyChange = (field, val) => {
-    setVaultKeys(prev => ({ ...prev, [field]: val }));
-  };
-
-  // Shift priority ordering
-  const movePriority = (index, direction) => {
-    const newPriority = [...priority];
-    const targetIndex = index + direction;
-    if (targetIndex >= 0 && targetIndex < newPriority.length) {
-      const temp = newPriority[index];
-      newPriority[index] = newPriority[targetIndex];
-      newPriority[targetIndex] = temp;
-      setPriority(newPriority);
+  const fetchUnifiedKey = async () => {
+    try {
+      const res = await fetch(getUrl('/settings/api-key'));
+      if (res.ok) {
+        const data = await res.json();
+        setUnifiedApiKey(data.apiKey);
+      }
+    } catch (e) {
+      console.error('Failed to load unified key:', e);
     }
   };
 
-  const handleSubmit = async (e) => {
+  const fetchAnalytics = async () => {
+    setIsLoadingAnalytics(true);
+    try {
+      const [summaryRes, modelRes, platformRes] = await Promise.all([
+        fetch(getUrl(`/analytics/summary?range=${analyticsRange}`)),
+        fetch(getUrl(`/analytics/by-model?range=${analyticsRange}`)),
+        fetch(getUrl(`/analytics/by-platform?range=${analyticsRange}`))
+      ]);
+
+      if (summaryRes.ok) setAnalyticsSummary(await summaryRes.json());
+      if (modelRes.ok) setAnalyticsByModel(await modelRes.json());
+      if (platformRes.ok) setAnalyticsByPlatform(await platformRes.json());
+    } catch (e) {
+      console.error('Failed to load analytics:', e);
+    } finally {
+      setIsLoadingAnalytics(false);
+    }
+  };
+
+  // Key operations
+  const handleAddKey = async (e) => {
     e.preventDefault();
-    
-    try {
-      // 1. Save session config to client-side localStorage
-      onSaveSettings({
-        provider,
-        apiKey: '',
-        model
-      });
+    if (!newKeyVal.trim()) return;
 
-      // 2. Save vault priority and keys to backend
-      const keysApiUrl = window.location.port === '5174' ? 'http://localhost:3000/api/keys' : '/api/keys';
-      const res = await fetch(keysApiUrl, {
+    setIsAddingKey(true);
+    try {
+      const res = await fetch(getUrl('/keys'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          priority,
-          keys: vaultKeys
+          platform: newKeyPlatform,
+          key: newKeyVal.trim(),
+          label: newKeyLabel.trim() || undefined
         })
       });
 
-      if (!res.ok) {
-        throw new Error('Failed to save keys vault to server');
+      if (res.ok) {
+        setNewKeyVal('');
+        setNewKeyLabel('');
+        await fetchKeys();
+        await fetchModels(); // Reload key counts
+      } else {
+        const err = await res.json();
+        alert(`Error: ${err.error?.message || 'Failed to add key'}`);
       }
-
-      onClose();
     } catch (err) {
-      alert(`Error saving settings: ${err.message}`);
+      alert(`Network error: ${err.message}`);
+    } finally {
+      setIsAddingKey(false);
     }
+  };
+
+  const handleToggleKey = async (keyId, currentEnabled) => {
+    try {
+      const res = await fetch(getUrl(`/keys/${keyId}`), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: !currentEnabled })
+      });
+      if (res.ok) {
+        await fetchKeys();
+        await fetchFallbackChain(); // Re-fetch since key counts update
+      }
+    } catch (e) {
+      console.error('Failed to toggle key:', e);
+    }
+  };
+
+  const handleDeleteKey = async (keyId) => {
+    if (!confirm('Are you sure you want to delete this API key?')) return;
+    try {
+      const res = await fetch(getUrl(`/keys/${keyId}`), {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        await fetchKeys();
+        await fetchModels();
+        await fetchFallbackChain();
+      }
+    } catch (e) {
+      console.error('Failed to delete key:', e);
+    }
+  };
+
+  // Fallback operations
+  const handleSortFallback = async (preset) => {
+    try {
+      const res = await fetch(getUrl(`/fallback/sort/${preset}`), {
+        method: 'POST'
+      });
+      if (res.ok) {
+        await fetchFallbackChain();
+      }
+    } catch (e) {
+      console.error('Failed to sort fallback chain:', e);
+    }
+  };
+
+  const handleToggleFallbackModel = async (modelDbId, currentEnabled) => {
+    const updated = fallbackChain.map(item => {
+      if (item.modelDbId === modelDbId) {
+        return { ...item, enabled: !currentEnabled };
+      }
+      return item;
+    });
+
+    try {
+      const res = await fetch(getUrl('/fallback'), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated.map(item => ({
+          modelDbId: item.modelDbId,
+          priority: item.priority,
+          enabled: item.enabled
+        })))
+      });
+      if (res.ok) {
+        await fetchFallbackChain();
+      }
+    } catch (e) {
+      console.error('Failed to update fallback model toggle:', e);
+    }
+  };
+
+  const handleMoveFallbackItem = async (index, direction) => {
+    const nextIndex = index + direction;
+    if (nextIndex < 0 || nextIndex >= fallbackChain.length) return;
+
+    const list = [...fallbackChain];
+    const temp = list[index];
+    list[index] = list[nextIndex];
+    list[nextIndex] = temp;
+
+    // Recalculate priority ranking
+    const updated = list.map((item, idx) => ({
+      modelDbId: item.modelDbId,
+      priority: idx + 1,
+      enabled: item.enabled
+    }));
+
+    try {
+      const res = await fetch(getUrl('/fallback'), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated)
+      });
+      if (res.ok) {
+        setFallbackChain(list.map((item, idx) => ({ ...item, priority: idx + 1 })));
+      }
+    } catch (e) {
+      console.error('Failed to update priority:', e);
+    }
+  };
+
+  // Rotate Unified API Key
+  const handleRegenerateUnifiedKey = async () => {
+    if (!confirm('Are you sure you want to regenerate the Unified API key? All applications using it will need to be updated.')) return;
+    try {
+      const res = await fetch(getUrl('/settings/api-key/regenerate'), {
+        method: 'POST'
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setUnifiedApiKey(data.apiKey);
+        alert('Unified API Key rotated successfully.');
+      }
+    } catch (e) {
+      console.error('Failed to rotate unified key:', e);
+    }
+  };
+
+  // Save Config
+  const handleApplyConfig = (e) => {
+    e.preventDefault();
+    onSaveSettings({
+      provider,
+      apiKey: '',
+      model: provider === 'fallback' ? 'fallback' : model
+    });
+    onClose();
+  };
+
+  const copyToClipboard = (text) => {
+    navigator.clipboard.writeText(text);
+    alert('Copied to clipboard!');
   };
 
   if (!isOpen) return null;
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ width: '580px' }}>
-        <div className="modal-header">
-          <h3 className="modal-title">Settings Manager</h3>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ width: '850px', maxHeight: '90vh', overflowY: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        
+        {/* Header */}
+        <div className="modal-header" style={{ padding: '20px 24px', borderBottom: '1px solid var(--border-color)', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <h3 className="modal-title" style={{ fontFamily: 'Outfit', fontWeight: 600 }}>FreeLLMAPI Control Center</h3>
+            <span style={{ fontSize: '0.72rem', backgroundColor: 'rgba(123, 164, 247, 0.1)', color: 'var(--accent-color)', padding: '3px 8px', borderRadius: '100px', fontWeight: 600 }}>
+              v4.0 (Unified)
+            </span>
+          </div>
           <button className="action-btn" onClick={onClose}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="18" y1="6" x2="6" y2="18" />
@@ -187,272 +344,563 @@ export default function SettingsModal({ isOpen, onClose, currentSettings, onSave
         </div>
 
         {/* Tab Headers */}
-        <div style={{ display: 'flex', borderBottom: '1px solid var(--border-color)', marginBottom: '20px', gap: '16px' }}>
-          {['session', 'vault', 'analytics'].map((tab) => (
+        <div style={{ display: 'flex', borderBottom: '1px solid var(--border-color)', padding: '0 24px', gap: '8px', flexShrink: 0, backgroundColor: 'rgba(255,255,255,0.01)' }}>
+          {[
+            { id: 'session', label: 'Session Config', icon: '⚙️' },
+            { id: 'keys', label: 'Proxy Keys', icon: '🔑' },
+            { id: 'fallback', label: 'Fallback Chain', icon: '🔄' },
+            { id: 'analytics', label: 'Analytics', icon: '📊' },
+            { id: 'unified', label: 'Unified Key', icon: '🔐' }
+          ].map((tab) => (
             <button
-              key={tab}
+              key={tab.id}
               type="button"
-              onClick={() => setActiveTab(tab)}
+              onClick={() => setActiveTab(tab.id)}
               style={{
                 background: 'transparent',
                 border: 'none',
-                borderBottom: activeTab === tab ? '2px solid var(--accent-color)' : '2px solid transparent',
-                color: activeTab === tab ? 'var(--text-primary)' : 'var(--text-muted)',
-                padding: '8px 12px',
+                borderBottom: activeTab === tab.id ? '2px solid var(--accent-color)' : '2px solid transparent',
+                color: activeTab === tab.id ? 'var(--text-primary)' : 'var(--text-muted)',
+                padding: '14px 16px',
                 cursor: 'pointer',
-                fontSize: '0.9rem',
+                fontSize: '0.88rem',
                 fontWeight: 500,
-                textTransform: 'capitalize',
-                transition: 'all 0.2s'
+                transition: 'all 0.2s',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
               }}
             >
-              {tab === 'session' ? 'Session Config' : tab === 'vault' ? 'API Keys Vault' : 'Usage Analytics'}
+              <span>{tab.icon}</span>
+              {tab.label}
             </button>
           ))}
         </div>
 
-        <form onSubmit={handleSubmit}>
+        {/* Scrollable Content Container */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
+          
+          {/* TAB 1: Session Config */}
           {activeTab === 'session' && (
-            <div>
+            <form onSubmit={handleApplyConfig}>
               <div className="form-group">
                 <label className="form-label">Study LLM Provider</label>
                 <select
                   className="form-select"
                   value={provider}
-                  onChange={(e) => handleProviderChange(e.target.value)}
+                  onChange={(e) => setProvider(e.target.value)}
                 >
-                  <option value="fallback">Offline (Fallback Mode - No Keys)</option>
-                  <option value="auto">Auto-Rotate (Uses Keys Vault)</option>
-                  <option value="gemini">Google Gemini API (Direct)</option>
-                  <option value="groq">Groq Cloud API (Direct)</option>
-                  <option value="openrouter">OpenRouter (Direct)</option>
+                  <option value="freellmapi">FreeLLMAPI Local Proxy (Recommended)</option>
+                  <option value="fallback">Offline Summarizer (Rule-Based Fallback)</option>
                 </select>
               </div>
 
-              {provider !== 'fallback' && (
+              {provider === 'freellmapi' && (
                 <div className="form-group">
-                  <label className="form-label">Model Target</label>
+                  <label className="form-label">Model Endpoint</label>
                   <select
                     className="form-select"
                     value={model}
                     onChange={(e) => setModel(e.target.value)}
                   >
-                    {MODEL_OPTIONS[provider]?.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                    <option value="custom">Custom Model Name...</option>
+                    <option value="auto">Auto-Rotate (Uses Active Fallback Chain)</option>
+                    {modelsList.map((m) => {
+                      const hasKey = m.keyCount > 0;
+                      return (
+                        <option key={m.modelId} value={m.modelId}>
+                          {m.displayName} ({PLATFORM_MAP[m.platform] || m.platform}) {hasKey ? `· ${m.keyCount} Key(s)` : ' · [No Keys]'}
+                        </option>
+                      );
+                    })}
                   </select>
-
-                  {model === 'custom' || !MODEL_OPTIONS[provider]?.find(m => m.value === model) ? (
-                    <input
-                      type="text"
-                      className="form-input"
-                      style={{ marginTop: '8px' }}
-                      placeholder="Enter custom model string (e.g. meta-llama/llama-3-8b)"
-                      value={model === 'custom' ? '' : model}
-                      onChange={(e) => setModel(e.target.value)}
-                      required
-                    />
-                  ) : null}
-                </div>
-              )}
-
-              {provider === 'auto' && (
-                <div style={{ padding: '12px', borderRadius: '8px', backgroundColor: 'rgba(123, 164, 247, 0.05)', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-                  🔄 <strong>Auto-Rotate Mode</strong> will query keys in your Vault in priority order. If one fails or hits rate limits, it automatically rotates to the next available healthy key. Configure vault order in the next tab!
+                  <div style={{ marginTop: '8px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                    💡 Selecting a specific model targets it directly. Selecting <strong>Auto-Rotate</strong> leverages the full key fallback priority list and auto-recovers from rate limits.
+                  </div>
                 </div>
               )}
 
               {provider === 'fallback' && (
-                <div style={{ padding: '12px', borderRadius: '8px', backgroundColor: 'rgba(123, 164, 247, 0.05)', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-                  💡 <strong>Offline Mode</strong> compiles notes locally using syntax rules. Save API keys in the Vault tab to enable full conversational study features.
+                <div style={{ padding: '16px', borderRadius: '12px', border: '1px solid var(--border-color)', backgroundColor: 'rgba(245, 158, 11, 0.05)', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                  ⚠️ Offline Summarizer mode parses text patterns on your device using basic syntax rules. To activate conversational study assistants with state-of-the-art LLMs, configure keys under the <strong>Proxy Keys</strong> tab and select the <strong>FreeLLMAPI Local Proxy</strong>.
                 </div>
               )}
-            </div>
+
+              <div style={{ marginTop: '30px', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
+                <button type="submit" className="btn btn-primary">Apply Configuration</button>
+              </div>
+            </form>
           )}
 
-          {activeTab === 'vault' && (
-            <div>
-              {isLoadingKeys ? (
-                <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>Loading Vault keys...</div>
-              ) : (
-                <div>
-                  <div style={{ marginBottom: '16px', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                    🔑 Keys are saved locally on your computer in `backend/data/keys.json`. They are never sent to third-party endpoints.
-                  </div>
+          {/* TAB 2: Proxy Keys */}
+          {activeTab === 'keys' && (
+            <div style={{ display: 'flex', gap: '24px', alignItems: 'flex-start' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                {/* Form */}
+                <form onSubmit={handleAddKey} style={{ border: '1px solid var(--border-color)', borderRadius: '12px', padding: '16px', backgroundColor: 'rgba(255,255,255,0.01)', marginBottom: '20px' }}>
+                  <h4 style={{ fontFamily: 'Outfit', fontSize: '0.95rem', fontWeight: 600, marginBottom: '12px', color: 'var(--text-primary)' }}>Add New Key</h4>
                   
-                  <div className="form-group">
-                    <label className="form-label">Google Gemini API Key</label>
-                    <input
-                      type="password"
-                      className="form-input"
-                      placeholder="AIzaSy..."
-                      value={vaultKeys.gemini || ''}
-                      onChange={(e) => handleKeyChange('gemini', e.target.value)}
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label">Groq Cloud API Key</label>
-                    <input
-                      type="password"
-                      className="form-input"
-                      placeholder="gsk_..."
-                      value={vaultKeys.groq || ''}
-                      onChange={(e) => handleKeyChange('groq', e.target.value)}
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label">OpenRouter API Key</label>
-                    <input
-                      type="password"
-                      className="form-input"
-                      placeholder="sk-or-..."
-                      value={vaultKeys.openrouter || ''}
-                      onChange={(e) => handleKeyChange('openrouter', e.target.value)}
-                    />
-                  </div>
-
-                  {/* Priority Chain Manager */}
-                  <div style={{ marginTop: '24px' }}>
-                    <label className="form-label">Key Priority Chain (Auto-Rotate Order)</label>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px' }}>
-                      {priority.map((prov, index) => {
-                        const hasKey = vaultKeys[prov] && vaultKeys[prov].trim() !== '';
-                        return (
-                          <div
-                            key={prov}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              backgroundColor: 'var(--bg-tertiary)',
-                              padding: '10px 16px',
-                              borderRadius: '8px',
-                              border: '1px solid var(--border-color)'
-                            }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                              <span style={{
-                                width: '8px',
-                                height: '8px',
-                                borderRadius: '50%',
-                                backgroundColor: hasKey ? '#10b981' : '#6b7280'
-                              }} />
-                              <span style={{ fontSize: '0.9rem', fontWeight: 500, textTransform: 'capitalize' }}>
-                                {prov === 'openrouter' ? 'OpenRouter' : prov === 'gemini' ? 'Google Gemini' : 'Groq API'}
-                              </span>
-                              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                {hasKey ? '(Ready)' : '(Not Configured)'}
-                              </span>
-                            </div>
-                            
-                            <div style={{ display: 'flex', gap: '4px' }}>
-                              <button
-                                type="button"
-                                className="action-btn"
-                                onClick={() => movePriority(index, -1)}
-                                disabled={index === 0}
-                                style={{ opacity: index === 0 ? 0.3 : 1 }}
-                              >
-                                ▲
-                              </button>
-                              <button
-                                type="button"
-                                className="action-btn"
-                                onClick={() => movePriority(index, 1)}
-                                disabled={index === priority.length - 1}
-                                style={{ opacity: index === priority.length - 1 ? 0.3 : 1 }}
-                              >
-                                ▼
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 2fr 1.5fr auto', gap: '12px', alignItems: 'flex-end' }}>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="form-label" style={{ fontSize: '0.75rem' }}>Platform</label>
+                      <select
+                        className="form-select"
+                        style={{ padding: '8px 12px', fontSize: '0.88rem' }}
+                        value={newKeyPlatform}
+                        onChange={(e) => setNewKeyPlatform(e.target.value)}
+                      >
+                        {Object.entries(PLATFORM_MAP).map(([id, label]) => (
+                          <option key={id} value={id}>{label}</option>
+                        ))}
+                      </select>
                     </div>
+                    
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="form-label" style={{ fontSize: '0.75rem' }}>API Key</label>
+                      <input
+                        type="password"
+                        className="form-input"
+                        style={{ padding: '8px 12px', fontSize: '0.88rem' }}
+                        placeholder="Paste key here"
+                        value={newKeyVal}
+                        onChange={(e) => setNewKeyVal(e.target.value)}
+                        required
+                      />
+                    </div>
+
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="form-label" style={{ fontSize: '0.75rem' }}>Label (Optional)</label>
+                      <input
+                        type="text"
+                        className="form-input"
+                        style={{ padding: '8px 12px', fontSize: '0.88rem' }}
+                        placeholder="My Gemini Key"
+                        value={newKeyLabel}
+                        onChange={(e) => setNewKeyLabel(e.target.value)}
+                      />
+                    </div>
+
+                    <button type="submit" className="btn btn-primary" style={{ padding: '10px 20px', fontSize: '0.85rem' }} disabled={isAddingKey}>
+                      {isAddingKey ? 'Adding...' : 'Add Key'}
+                    </button>
                   </div>
+                </form>
+
+                {/* Table */}
+                <h4 style={{ fontFamily: 'Outfit', fontSize: '0.95rem', fontWeight: 600, marginBottom: '10px', color: 'var(--text-primary)' }}>Configured API Keys ({keysList.length})</h4>
+                
+                {keysList.length === 0 ? (
+                  <div style={{ padding: '30px', textAlign: 'center', color: 'var(--text-muted)', border: '1px dashed var(--border-color)', borderRadius: '8px' }}>
+                    No keys added yet. Add a key or view details in the Help Desk.
+                  </div>
+                ) : (
+                  <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', overflow: 'hidden' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                      <thead>
+                        <tr style={{ backgroundColor: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-color)', textAlign: 'left', color: 'var(--text-muted)' }}>
+                          <th style={{ padding: '10px 16px' }}>Platform</th>
+                          <th style={{ padding: '10px 16px' }}>Label</th>
+                          <th style={{ padding: '10px 16px' }}>Key</th>
+                          <th style={{ padding: '10px 16px' }}>Status</th>
+                          <th style={{ padding: '10px 16px', textAlign: 'center' }}>Enabled</th>
+                          <th style={{ padding: '10px 16px', textAlign: 'center' }}>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {keysList.map((k) => {
+                          const statusColors = {
+                            healthy: '#10b981',
+                            rate_limited: '#f59e0b',
+                            invalid: '#ef4444',
+                            unknown: '#6b7280',
+                            error: '#ef4444'
+                          };
+                          const statusColor = statusColors[k.status] || '#6b7280';
+                          return (
+                            <tr key={k.id} style={{ borderBottom: '1px solid var(--border-color)', backgroundColor: 'rgba(255,255,255,0.01)' }}>
+                              <td style={{ padding: '10px 16px', fontWeight: 500, textTransform: 'capitalize' }}>
+                                {PLATFORM_MAP[k.platform] || k.platform}
+                              </td>
+                              <td style={{ padding: '10px 16px', color: 'var(--text-secondary)' }}>
+                                {k.label || '—'}
+                              </td>
+                              <td style={{ padding: '10px 16px', fontFamily: 'monospace' }}>
+                                {k.maskedKey}
+                              </td>
+                              <td style={{ padding: '10px 16px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: statusColor }} />
+                                  <span style={{ fontSize: '0.75rem', textTransform: 'capitalize', color: 'var(--text-secondary)' }}>{k.status}</span>
+                                </div>
+                              </td>
+                              <td style={{ padding: '10px 16px', textAlign: 'center' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={k.enabled}
+                                  onChange={() => handleToggleKey(k.id, k.enabled)}
+                                  style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                                />
+                              </td>
+                              <td style={{ padding: '10px 16px', textAlign: 'center' }}>
+                                <button
+                                  type="button"
+                                  className="action-btn delete"
+                                  onClick={() => handleDeleteKey(k.id)}
+                                  style={{ margin: '0 auto' }}
+                                >
+                                  🗑️
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* Right Column: Help Desk */}
+              <div style={{ width: '280px', backgroundColor: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '16px', flexShrink: 0, overflowY: 'auto', maxHeight: '530px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <h4 style={{ fontFamily: 'Outfit', fontSize: '0.9rem', fontWeight: 600, color: 'var(--accent-color)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span>🔗</span> API Key Help Desk
+                </h4>
+                <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: 0, lineHeight: 1.4 }}>
+                  Generous free-tiers are available. Click links to sign up and get keys:
+                </p>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {[
+                    { name: 'Google Gemini', url: 'https://aistudio.google.com/', desc: 'Click "Get API Key" in Google AI Studio.' },
+                    { name: 'Groq Cloud', url: 'https://console.groq.com/keys', desc: 'Generate key under "API Keys" page.' },
+                    { name: 'Cerebras Cloud', url: 'https://cloud.cerebras.ai/', desc: 'Ultra-fast inference (Llama/Qwen).' },
+                    { name: 'SambaNova Cloud', url: 'https://cloud.sambanova.ai/', desc: 'Free high-speed DeepSeek V3.' },
+                    { name: 'OpenRouter', url: 'https://openrouter.ai/keys', desc: 'Access 20+ free-tier LLM models.' },
+                    { name: 'Mistral AI', url: 'https://console.mistral.ai/', desc: 'Go to API Keys (includes free trial credit).' },
+                    { name: 'Cohere', url: 'https://dashboard.cohere.com/api-keys', desc: 'Generate a Trial API key.' },
+                    { name: 'GitHub Models', url: 'https://github.com/settings/tokens', desc: 'Create Personal Access Token (classic, no scopes).' },
+                    { name: 'Cloudflare Workers AI', url: 'https://dash.cloudflare.com/', desc: 'Generate Workers AI API Token.' },
+                    { name: 'NVIDIA NIM', url: 'https://build.nvidia.com/', desc: 'Get free key on build catalog.' },
+                    { name: 'Z.ai (Zhipu)', url: 'https://open.bigmodel.cn/', desc: 'Register to get keys for GLM-4.' },
+                    { name: 'HuggingFace', url: 'https://huggingface.co/settings/tokens', desc: 'Create Read token for Inference API.' }
+                  ].map((prov, i) => (
+                    <div key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '10px' }}>
+                      <a 
+                        href={prov.url} 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        style={{ 
+                          color: 'var(--text-primary)', 
+                          fontSize: '0.82rem', 
+                          fontWeight: 600, 
+                          textDecoration: 'none',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                      >
+                        {prov.name} <span style={{ fontSize: '0.7rem' }}>↗</span>
+                      </a>
+                      <div style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', marginTop: '3px', lineHeight: 1.35 }}>
+                        {prov.desc}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              )}
+              </div>
             </div>
           )}
 
-          {activeTab === 'analytics' && (
+          {/* TAB 3: Fallback Chain */}
+          {activeTab === 'fallback' && (
             <div>
-              {isLoadingStats ? (
-                <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>Loading Analytics stats...</div>
-              ) : (
-                <div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' }}>
-                    <div style={{ backgroundColor: 'var(--bg-tertiary)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                        Total API Requests
-                      </div>
-                      <div style={{ fontSize: '2rem', fontWeight: 600, marginTop: '4px', fontFamily: 'Outfit' }}>
-                        {stats.totalRequests || 0}
-                      </div>
-                    </div>
-                    <div style={{ backgroundColor: 'var(--bg-tertiary)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                        Last Active Provider
-                      </div>
-                      <div style={{ fontSize: '1.25rem', fontWeight: 600, marginTop: '12px', color: 'var(--accent-color)' }}>
-                        {stats.lastRoutedVia || 'None'}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <h4 className="form-label" style={{ marginBottom: '4px' }}>Query distribution</h4>
-                    
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.88rem', padding: '8px 12px', backgroundColor: 'rgba(255,255,255,0.02)', borderRadius: '6px' }}>
-                      <span>Google Gemini Requests</span>
-                      <strong>{stats.geminiRequests || 0}</strong>
-                    </div>
-                    
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.88rem', padding: '8px 12px', backgroundColor: 'rgba(255,255,255,0.02)', borderRadius: '6px' }}>
-                      <span>Groq API Requests</span>
-                      <strong>{stats.groqRequests || 0}</strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.88rem', padding: '8px 12px', backgroundColor: 'rgba(255,255,255,0.02)', borderRadius: '6px' }}>
-                      <span>OpenRouter Requests</span>
-                      <strong>{stats.openrouterRequests || 0}</strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.88rem', padding: '8px 12px', backgroundColor: 'rgba(255,255,255,0.02)', borderRadius: '6px' }}>
-                      <span>Offline Fallback Requests</span>
-                      <strong>{stats.fallbackRequests || 0}</strong>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={handleResetStats}
-                    style={{ marginTop: '24px', width: '100%', borderColor: 'rgba(239, 68, 68, 0.3)', color: '#ef4444' }}
-                  >
-                    Reset Analytics Data
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                  ⚙️ Sort the order of active model evaluations. FreeLLMAPI will check keys from top to bottom.
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button type="button" className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '0.75rem' }} onClick={() => handleSortFallback('intelligence')}>
+                    🧠 Sort Intelligence
+                  </button>
+                  <button type="button" className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '0.75rem' }} onClick={() => handleSortFallback('speed')}>
+                    ⚡ Sort Speed
+                  </button>
+                  <button type="button" className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '0.75rem' }} onClick={() => handleSortFallback('budget')}>
+                    🪙 Sort Budget
                   </button>
                 </div>
+              </div>
+
+              {fallbackChain.length === 0 ? (
+                <div style={{ padding: '30px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                  Loading priority chain details...
+                </div>
+              ) : (
+                <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', overflow: 'hidden' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                    <thead>
+                      <tr style={{ backgroundColor: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-color)', textAlign: 'left', color: 'var(--text-muted)' }}>
+                        <th style={{ padding: '10px 16px', width: '60px' }}>Rank</th>
+                        <th style={{ padding: '10px 16px' }}>Model Display Name</th>
+                        <th style={{ padding: '10px 16px' }}>Platform</th>
+                        <th style={{ padding: '10px 16px' }}>Budget</th>
+                        <th style={{ padding: '10px 16px', textAlign: 'center' }}>Provider keys</th>
+                        <th style={{ padding: '10px 16px', textAlign: 'center' }}>Enabled</th>
+                        <th style={{ padding: '10px 16px', textAlign: 'center', width: '100px' }}>Priority Reorder</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {fallbackChain.map((item, index) => {
+                        const hasKeys = item.keyCount > 0;
+                        return (
+                          <tr key={item.modelDbId} style={{ borderBottom: '1px solid var(--border-color)', backgroundColor: hasKeys ? 'transparent' : 'rgba(255,255,255,0.01)', opacity: hasKeys ? 1 : 0.6 }}>
+                            <td style={{ padding: '10px 16px', fontWeight: 600 }}>
+                              {item.priority}
+                            </td>
+                            <td style={{ padding: '10px 16px', fontWeight: 500 }}>
+                              {item.displayName}
+                            </td>
+                            <td style={{ padding: '10px 16px', textTransform: 'capitalize' }}>
+                              {PLATFORM_MAP[item.platform] || item.platform}
+                            </td>
+                            <td style={{ padding: '10px 16px', color: 'var(--text-muted)' }}>
+                              {item.monthlyTokenBudget || '—'}
+                            </td>
+                            <td style={{ padding: '10px 16px', textAlign: 'center' }}>
+                              <span style={{ fontSize: '0.75rem', backgroundColor: hasKeys ? 'rgba(16, 185, 129, 0.1)' : 'rgba(107, 114, 128, 0.1)', color: hasKeys ? '#10b981' : '#6b7280', padding: '2px 8px', borderRadius: '100px', fontWeight: 600 }}>
+                                {item.keyCount} Active Key(s)
+                              </span>
+                            </td>
+                            <td style={{ padding: '10px 16px', textAlign: 'center' }}>
+                              <input
+                                type="checkbox"
+                                checked={item.enabled}
+                                onChange={() => handleToggleFallbackModel(item.modelDbId, item.enabled)}
+                                style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                              />
+                            </td>
+                            <td style={{ padding: '10px 16px' }}>
+                              <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
+                                <button
+                                  type="button"
+                                  className="action-btn"
+                                  onClick={() => handleMoveFallbackItem(index, -1)}
+                                  disabled={index === 0}
+                                  style={{ opacity: index === 0 ? 0.3 : 1 }}
+                                >
+                                  ▲
+                                </button>
+                                <button
+                                  type="button"
+                                  className="action-btn"
+                                  onClick={() => handleMoveFallbackItem(index, 1)}
+                                  disabled={index === fallbackChain.length - 1}
+                                  style={{ opacity: index === fallbackChain.length - 1 ? 0.3 : 1 }}
+                                >
+                                  ▼
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </div>
           )}
 
-          <div className="modal-actions" style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px', marginTop: '20px' }}>
-            <button type="button" className="btn btn-secondary" onClick={onClose}>
-              Cancel
-            </button>
-            {activeTab !== 'analytics' && (
-              <button type="submit" className="btn btn-primary" disabled={isLoadingKeys}>
-                Save & Apply
-              </button>
-            )}
-          </div>
-        </form>
+          {/* TAB 4: Proxy Analytics */}
+          {activeTab === 'analytics' && (
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                <h4 style={{ fontFamily: 'Outfit', fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)' }}>Usage Breakdown</h4>
+                
+                <div style={{ display: 'flex', border: '1px solid var(--border-color)', borderRadius: '6px', overflow: 'hidden' }}>
+                  {['24h', '7d', '30d'].map((r) => (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => setAnalyticsRange(r)}
+                      style={{
+                        padding: '6px 12px',
+                        border: 'none',
+                        background: analyticsRange === r ? 'var(--accent-color)' : 'var(--bg-tertiary)',
+                        color: analyticsRange === r ? '#000' : 'var(--text-secondary)',
+                        fontSize: '0.78rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                    >
+                      {r.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {isLoadingAnalytics ? (
+                <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                  Loading analytics summary...
+                </div>
+              ) : (
+                <div>
+                  {/* Grid cards */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '24px' }}>
+                    
+                    <div style={{ backgroundColor: 'var(--bg-tertiary)', padding: '12px 16px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Total Requests</div>
+                      <div style={{ fontSize: '1.5rem', fontWeight: 600, fontFamily: 'Outfit', marginTop: '4px' }}>
+                        {analyticsSummary?.totalRequests || 0}
+                      </div>
+                    </div>
+
+                    <div style={{ backgroundColor: 'var(--bg-tertiary)', padding: '12px 16px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Success Rate</div>
+                      <div style={{ fontSize: '1.5rem', fontWeight: 600, fontFamily: 'Outfit', marginTop: '4px', color: '#10b981' }}>
+                        {analyticsSummary?.successRate ?? 100}%
+                      </div>
+                    </div>
+
+                    <div style={{ backgroundColor: 'var(--bg-tertiary)', padding: '12px 16px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Est. Cost Savings</div>
+                      <div style={{ fontSize: '1.5rem', fontWeight: 600, fontFamily: 'Outfit', marginTop: '4px', color: 'var(--accent-color)' }}>
+                        ${analyticsSummary?.estimatedCostSavings || '0.00'}
+                      </div>
+                    </div>
+
+                    <div style={{ backgroundColor: 'var(--bg-tertiary)', padding: '12px 16px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Avg Latency</div>
+                      <div style={{ fontSize: '1.5rem', fontWeight: 600, fontFamily: 'Outfit', marginTop: '4px' }}>
+                        {analyticsSummary?.avgLatencyMs || 0} ms
+                      </div>
+                    </div>
+
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                    
+                    {/* Left: Models usage */}
+                    <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', overflow: 'hidden' }}>
+                      <div style={{ backgroundColor: 'var(--bg-tertiary)', padding: '8px 12px', borderBottom: '1px solid var(--border-color)', fontSize: '0.8rem', fontWeight: 600 }}>
+                        Requests by Model
+                      </div>
+                      {analyticsByModel.length === 0 ? (
+                        <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>No requests recorded.</div>
+                      ) : (
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                          <thead>
+                            <tr style={{ borderBottom: '1px solid var(--border-color)', textAlign: 'left', color: 'var(--text-muted)' }}>
+                              <th style={{ padding: '8px 12px' }}>Model</th>
+                              <th style={{ padding: '8px 12px', textAlign: 'center' }}>Requests</th>
+                              <th style={{ padding: '8px 12px', textAlign: 'center' }}>Success %</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {analyticsByModel.map((row, idx) => (
+                              <tr key={idx} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                <td style={{ padding: '8px 12px', fontWeight: 500 }}>{row.displayName}</td>
+                                <td style={{ padding: '8px 12px', textAlign: 'center' }}>{row.requests}</td>
+                                <td style={{ padding: '8px 12px', textAlign: 'center', color: '#10b981' }}>{row.successRate}%</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+
+                    {/* Right: Platforms usage */}
+                    <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', overflow: 'hidden' }}>
+                      <div style={{ backgroundColor: 'var(--bg-tertiary)', padding: '8px 12px', borderBottom: '1px solid var(--border-color)', fontSize: '0.8rem', fontWeight: 600 }}>
+                        Requests by Provider
+                      </div>
+                      {analyticsByPlatform.length === 0 ? (
+                        <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>No requests recorded.</div>
+                      ) : (
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                          <thead>
+                            <tr style={{ borderBottom: '1px solid var(--border-color)', textAlign: 'left', color: 'var(--text-muted)' }}>
+                              <th style={{ padding: '8px 12px' }}>Provider</th>
+                              <th style={{ padding: '8px 12px', textAlign: 'center' }}>Requests</th>
+                              <th style={{ padding: '8px 12px', textAlign: 'center' }}>Success %</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {analyticsByPlatform.map((row, idx) => (
+                              <tr key={idx} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                <td style={{ padding: '8px 12px', fontWeight: 500, textTransform: 'capitalize' }}>
+                                  {PLATFORM_MAP[row.platform] || row.platform}
+                                </td>
+                                <td style={{ padding: '8px 12px', textAlign: 'center' }}>{row.requests}</td>
+                                <td style={{ padding: '8px 12px', textAlign: 'center', color: '#10b981' }}>{row.successRate}%</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 5: Unified Key */}
+          {activeTab === 'unified' && (
+            <div>
+              <div style={{ padding: '16px', borderRadius: '12px', border: '1px solid var(--border-color)', backgroundColor: 'rgba(123, 164, 247, 0.03)', marginBottom: '24px' }}>
+                <h4 style={{ fontFamily: 'Outfit', fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>Unified API Key Vault</h4>
+                <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
+                  Clients authenticate with the local FreeLLMAPI proxy using a single, secure token. Point your custom developer applications or third-party client libraries (e.g. OpenAI SDK, Continue, Cursor) to this instance.
+                </p>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Unified API Key</label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={unifiedApiKey}
+                    readOnly
+                    style={{ fontFamily: 'monospace', fontSize: '0.88rem', padding: '12px', backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)' }}
+                  />
+                  <button type="button" className="btn btn-secondary" style={{ padding: '0 16px' }} onClick={() => copyToClipboard(unifiedApiKey)}>
+                    📋 Copy
+                  </button>
+                </div>
+              </div>
+
+              <div className="form-group" style={{ marginTop: '16px' }}>
+                <label className="form-label">API Endpoint</label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input
+                    type="text"
+                    className="form-input"
+                    value="http://localhost:3000/v1"
+                    readOnly
+                    style={{ fontFamily: 'monospace', fontSize: '0.88rem', padding: '12px', backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)' }}
+                  />
+                  <button type="button" className="btn btn-secondary" style={{ padding: '0 16px' }} onClick={() => copyToClipboard('http://localhost:3000/v1')}>
+                    📋 Copy
+                  </button>
+                </div>
+                <div style={{ marginTop: '6px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  🚀 This endpoint routes requests directly through port 3000 and maps to the local proxy backend automatically.
+                </div>
+              </div>
+
+              <div style={{ borderTop: '1px solid var(--border-color)', marginTop: '30px', paddingTop: '20px', display: 'flex', justifyContent: 'flex-start' }}>
+                <button type="button" className="btn btn-secondary" style={{ color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.3)' }} onClick={handleRegenerateUnifiedKey}>
+                  🔄 Rotate / Regenerate Key
+                </button>
+              </div>
+            </div>
+          )}
+
+        </div>
       </div>
     </div>
   );

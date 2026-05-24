@@ -15,33 +15,13 @@ app.use(express.json());
 
 const DATA_DIR = path.join(__dirname, 'data');
 const NOTEBOOKS_DIR = path.join(DATA_DIR, 'notebooks');
-const KEYS_FILE = path.join(DATA_DIR, 'keys.json');
-const STATS_FILE = path.join(DATA_DIR, 'stats.json');
 
-// Ensure directories and files exist
+// Ensure directories exist
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 if (!fs.existsSync(NOTEBOOKS_DIR)) {
   fs.mkdirSync(NOTEBOOKS_DIR, { recursive: true });
-}
-if (!fs.existsSync(KEYS_FILE)) {
-  const defaultKeys = {
-    priority: ['gemini', 'groq', 'openrouter'],
-    keys: { gemini: '', groq: '', openrouter: '' }
-  };
-  fs.writeFileSync(KEYS_FILE, JSON.stringify(defaultKeys, null, 2), 'utf8');
-}
-if (!fs.existsSync(STATS_FILE)) {
-  const defaultStats = {
-    totalRequests: 0,
-    geminiRequests: 0,
-    groqRequests: 0,
-    openrouterRequests: 0,
-    fallbackRequests: 0,
-    lastRoutedVia: 'None'
-  };
-  fs.writeFileSync(STATS_FILE, JSON.stringify(defaultStats, null, 2), 'utf8');
 }
 
 // Helpers for paths
@@ -50,90 +30,71 @@ const getMetaPath = (id) => path.join(getNotebookPath(id), 'meta.json');
 const getChatPath = (id) => path.join(getNotebookPath(id), 'chat.json');
 const getNotesPath = (id) => path.join(getNotebookPath(id), 'notes.md');
 
-// API Routes
-
-// 1. Keys Vault APIs
-app.get('/api/keys', (req, res) => {
+// 1. REVERSE PROXY TO FREELLMAPI (port 3001)
+const proxyRequest = async (targetPath, req, res) => {
   try {
-    if (fs.existsSync(KEYS_FILE)) {
-      const keys = JSON.parse(fs.readFileSync(KEYS_FILE, 'utf8'));
-      res.json(keys);
-    } else {
-      res.json({
-        priority: ['gemini', 'groq', 'openrouter'],
-        keys: { gemini: '', groq: '', openrouter: '' }
-      });
-    }
-  } catch (error) {
-    console.error('Error reading keys:', error);
-    res.status(500).json({ error: 'Failed to read keys vault' });
-  }
-});
-
-app.post('/api/keys', (req, res) => {
-  try {
-    const { priority, keys } = req.body;
+    const url = `http://localhost:3001${targetPath}`;
     
-    // Validate inputs
-    const updatedVault = {
-      priority: priority || ['gemini', 'groq', 'openrouter'],
-      keys: {
-        gemini: (keys && keys.gemini) || '',
-        groq: (keys && keys.groq) || '',
-        openrouter: (keys && keys.openrouter) || ''
+    // Copy headers from request
+    const headers = { ...req.headers };
+    delete headers.host; // Remove host header
+
+    // Inject Unified API key dynamically for proxy requests
+    if (targetPath.startsWith('/v1')) {
+      try {
+        const keyRes = await fetch('http://localhost:3001/api/settings/api-key');
+        if (keyRes.ok) {
+          const keyData = await keyRes.json();
+          headers['authorization'] = `Bearer ${keyData.apiKey}`;
+        }
+      } catch (e) {
+        console.warn('Failed to auto-fetch FreeLLMAPI unified key:', e.message);
       }
-    };
-    
-    fs.writeFileSync(KEYS_FILE, JSON.stringify(updatedVault, null, 2), 'utf8');
-    res.json({ success: true, message: 'Keys vault updated successfully' });
-  } catch (error) {
-    console.error('Error saving keys:', error);
-    res.status(500).json({ error: 'Failed to save keys' });
-  }
-});
-
-// 2. Stats/Analytics API
-app.get('/api/stats', (req, res) => {
-  try {
-    if (fs.existsSync(STATS_FILE)) {
-      const stats = JSON.parse(fs.readFileSync(STATS_FILE, 'utf8'));
-      res.json(stats);
-    } else {
-      res.json({
-        totalRequests: 0,
-        geminiRequests: 0,
-        groqRequests: 0,
-        openrouterRequests: 0,
-        fallbackRequests: 0,
-        lastRoutedVia: 'None'
-      });
     }
-  } catch (error) {
-    console.error('Error loading stats:', error);
-    res.status(500).json({ error: 'Failed to load stats' });
-  }
-});
 
-// Reset stats
-app.post('/api/stats/reset', (req, res) => {
-  try {
-    const defaultStats = {
-      totalRequests: 0,
-      geminiRequests: 0,
-      groqRequests: 0,
-      openrouterRequests: 0,
-      fallbackRequests: 0,
-      lastRoutedVia: 'None'
+    const fetchOpts = {
+      method: req.method,
+      headers: headers
     };
-    fs.writeFileSync(STATS_FILE, JSON.stringify(defaultStats, null, 2), 'utf8');
-    res.json(defaultStats);
-  } catch (error) {
-    console.error('Error resetting stats:', error);
-    res.status(500).json({ error: 'Failed to reset stats' });
+
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      fetchOpts.body = JSON.stringify(req.body);
+    }
+
+    const response = await fetch(url, fetchOpts);
+    
+    res.status(response.status);
+    
+    for (const [key, value] of response.headers.entries()) {
+      // Don't forward transfer-encoding chunked directly as it's managed by Express
+      if (key.toLowerCase() !== 'transfer-encoding') {
+        res.setHeader(key, value);
+      }
+    }
+    
+    const bodyText = await response.text();
+    res.send(bodyText);
+  } catch (err) {
+    console.error(`[Proxy Error] failed routing to ${targetPath}:`, err.message);
+    res.status(502).json({ error: `FreeLLMAPI proxy offline: ${err.message}` });
   }
+};
+
+// Route completions & models to FreeLLMAPI
+app.all('/v1/*', (req, res) => {
+  proxyRequest(req.originalUrl, req, res);
 });
 
-// 3. Get all notebooks (metadata only)
+// Route settings/keys/analytics to FreeLLMAPI
+app.all('/proxy-api/*', (req, res) => {
+  const targetPath = req.originalUrl.replace('/proxy-api', '/api');
+  proxyRequest(targetPath, req, res);
+});
+
+
+// 2. NOTEBOOK REST APIs (Local)
+
+// Get all notebooks
 app.get('/api/notebooks', (req, res) => {
   try {
     const notebooks = [];
@@ -159,7 +120,7 @@ app.get('/api/notebooks', (req, res) => {
   }
 });
 
-// 4. Create a new notebook
+// Create a new notebook
 app.post('/api/notebooks', (req, res) => {
   try {
     const { name } = req.body;
@@ -188,7 +149,7 @@ app.post('/api/notebooks', (req, res) => {
   }
 });
 
-// 5. Rename a notebook
+// Rename notebook
 app.put('/api/notebooks/:id/rename', (req, res) => {
   try {
     const { id } = req.params;
@@ -214,7 +175,7 @@ app.put('/api/notebooks/:id/rename', (req, res) => {
   }
 });
 
-// 6. Get a specific notebook's data (meta, chat history, notes)
+// Get detailed notebook content
 app.get('/api/notebooks/:id', (req, res) => {
   try {
     const { id } = req.params;
@@ -239,7 +200,7 @@ app.get('/api/notebooks/:id', (req, res) => {
   }
 });
 
-// 7. Delete a notebook
+// Delete notebook
 app.delete('/api/notebooks/:id', (req, res) => {
   try {
     const { id } = req.params;
@@ -257,7 +218,7 @@ app.delete('/api/notebooks/:id', (req, res) => {
   }
 });
 
-// 8. Manually save notes edits
+// Save notes edits
 app.put('/api/notebooks/:id/notes', (req, res) => {
   try {
     const { id } = req.params;
@@ -276,7 +237,7 @@ app.put('/api/notebooks/:id/notes', (req, res) => {
   }
 });
 
-// 9. Chat API - Triggers LLM call, appends notes, saves chat history
+// Chat API
 app.post('/api/notebooks/:id/chat', async (req, res) => {
   try {
     const { id } = req.params;
@@ -294,10 +255,8 @@ app.post('/api/notebooks/:id/chat', async (req, res) => {
     const chatFile = getChatPath(id);
     const notesFile = getNotesPath(id);
 
-    // Read current chat history
     let chatHistory = JSON.parse(fs.readFileSync(chatFile, 'utf8'));
 
-    // Append user message
     const userMessage = {
       id: `msg_${Date.now()}_u`,
       role: 'user',
@@ -306,10 +265,8 @@ app.post('/api/notebooks/:id/chat', async (req, res) => {
     };
     chatHistory.push(userMessage);
 
-    // Read current notes for context
     const currentNotes = fs.readFileSync(notesFile, 'utf8');
 
-    // Run LLM and notes extraction processes
     const { reply, notesToAppend } = await processAndAppendNotes({
       message,
       chatHistory,
@@ -317,7 +274,6 @@ app.post('/api/notebooks/:id/chat', async (req, res) => {
       llmConfig,
     });
 
-    // Save model response to chat
     const assistantMessage = {
       id: `msg_${Date.now()}_a`,
       role: 'assistant',
@@ -326,7 +282,6 @@ app.post('/api/notebooks/:id/chat', async (req, res) => {
     };
     chatHistory.push(assistantMessage);
 
-    // If we have notes to append, write them to notes.md
     let updatedNotes = currentNotes;
     if (notesToAppend && notesToAppend.trim() !== '') {
       const cleanNotesToAppend = notesToAppend.trim();
@@ -334,7 +289,6 @@ app.post('/api/notebooks/:id/chat', async (req, res) => {
       fs.writeFileSync(notesFile, updatedNotes, 'utf8');
     }
 
-    // Save updated chat history
     fs.writeFileSync(chatFile, JSON.stringify(chatHistory, null, 2), 'utf8');
 
     res.json({
@@ -353,7 +307,6 @@ app.post('/api/notebooks/:id/chat', async (req, res) => {
 const frontendDistPath = path.join(__dirname, '../frontend/dist');
 app.use(express.static(frontendDistPath));
 
-// Route catch-all to SPA index.html
 app.get('*', (req, res) => {
   const indexHtmlFile = path.join(frontendDistPath, 'index.html');
   if (fs.existsSync(indexHtmlFile)) {

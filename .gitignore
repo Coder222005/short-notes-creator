@@ -9,6 +9,7 @@ frontend/dist/
 # Local logs and PIDs
 *.log
 app.pid
+freellmapi.pid
 freellmapi.log
 
 # Local API vault keys (CRITICAL)

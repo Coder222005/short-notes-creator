@@ -1,8 +1,8 @@
 {
-  "totalRequests": 1,
+  "totalRequests": 0,
   "geminiRequests": 0,
   "groqRequests": 0,
   "openrouterRequests": 0,
-  "fallbackRequests": 1,
-  "lastRoutedVia": "FALLBACK"
+  "fallbackRequests": 0,
+  "lastRoutedVia": "None"
 }
