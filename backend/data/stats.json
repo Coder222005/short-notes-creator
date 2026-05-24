@@ -1,9 +1,9 @@
 {
-  "totalRequests": 6,
+  "totalRequests": 7,
   "geminiRequests": 0,
   "groqRequests": 0,
   "openrouterRequests": 0,
-  "fallbackRequests": 5,
+  "fallbackRequests": 6,
   "lastRoutedVia": "FALLBACK",
   "freellmapiRequests": 1
 }

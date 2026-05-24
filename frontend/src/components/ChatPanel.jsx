@@ -12,10 +12,36 @@ export function MarkdownRenderer({ text }) {
   let codeContent = [];
   let codeLang = '';
 
+  const renderFormulaParts = (formulaText) => {
+    const parts = [];
+    const regex = /(_[a-zA-Z0-9]+|\^[a-zA-Z0-9]+)/g;
+    let lastIndex = 0;
+    let match;
+    
+    while ((match = regex.exec(formulaText)) !== null) {
+      const matchIndex = match.index;
+      if (matchIndex > lastIndex) {
+        parts.push(formulaText.substring(lastIndex, matchIndex));
+      }
+      const token = match[0];
+      if (token.startsWith('_')) {
+        parts.push(<sub key={matchIndex}>{token.substring(1)}</sub>);
+      } else if (token.startsWith('^')) {
+        parts.push(<sup key={matchIndex}>{token.substring(1)}</sup>);
+      }
+      lastIndex = regex.lastIndex;
+    }
+    
+    if (lastIndex < formulaText.length) {
+      parts.push(formulaText.substring(lastIndex));
+    }
+    return parts;
+  };
+
   const parseInlineMarkdown = (inputText) => {
     const parts = [];
     let currentIndex = 0;
-    const regex = /(\*\*.*?\*\*|`.*?`)/g;
+    const regex = /(\*\*.*?\*\*|`.*?`|\$.*?\$)/g;
     let match;
     
     while ((match = regex.exec(inputText)) !== null) {
@@ -29,6 +55,13 @@ export function MarkdownRenderer({ text }) {
         parts.push(<strong key={matchIndex}>{token.slice(2, -2)}</strong>);
       } else if (token.startsWith('`') && token.endsWith('`')) {
         parts.push(<code key={matchIndex}>{token.slice(1, -1)}</code>);
+      } else if (token.startsWith('$') && token.endsWith('$')) {
+        const formulaContent = token.slice(1, -1);
+        parts.push(
+          <span key={matchIndex} className="formula-inline" style={{ fontFamily: 'Outfit, Math, serif', fontStyle: 'italic' }}>
+            {renderFormulaParts(formulaContent)}
+          </span>
+        );
       }
       
       currentIndex = regex.lastIndex;
