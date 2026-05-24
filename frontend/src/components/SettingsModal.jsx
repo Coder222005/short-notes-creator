@@ -59,9 +59,19 @@ export default function SettingsModal({ isOpen, onClose, currentSettings, onSave
   // Helper to resolve proxy endpoint address
   const getUrl = (subpath) => {
     const isDev = window.location.port === '5173' || window.location.port === '5174';
-    const base = isDev ? 'http://localhost:3000' : '';
+    const devPort = localStorage.getItem('studynotebook_gateway_port') || '3000';
+    const base = isDev ? `http://localhost:${devPort}` : '';
     return `${base}/proxy-api${subpath}`;
   };
+
+  // Dynamic base URL builder for API calls
+  const getBaseUrl = () => {
+    const isDev = window.location.port === '5173' || window.location.port === '5174';
+    const devPort = localStorage.getItem('studynotebook_gateway_port') || '3000';
+    return isDev ? `http://localhost:${devPort}` : '';
+  };
+
+  const currentEndpointUrl = `${window.location.protocol}//${window.location.hostname}:${window.location.port || '3000'}/v1`;
 
   // Sync settings when modal opens
   useEffect(() => {
@@ -248,8 +258,7 @@ export default function SettingsModal({ isOpen, onClose, currentSettings, onSave
       const matchingModel = modelsList.find(m => m.platform === key.platform);
       const testModelId = matchingModel ? matchingModel.modelId : 'auto';
       
-      const isDev = window.location.port === '5173' || window.location.port === '5174';
-      const base = isDev ? 'http://localhost:3000' : '';
+      const base = getBaseUrl();
       const chatCompletionsUrl = `${base}/v1/chat/completions`;
 
       const res = await fetch(chatCompletionsUrl, {
@@ -306,8 +315,7 @@ export default function SettingsModal({ isOpen, onClose, currentSettings, onSave
         testModelId = matchingModel ? matchingModel.modelId : 'auto';
       }
 
-      const isDev = window.location.port === '5173' || window.location.port === '5174';
-      const base = isDev ? 'http://localhost:3000' : '';
+      const base = getBaseUrl();
       const chatCompletionsUrl = `${base}/v1/chat/completions`;
 
       const res = await fetch(chatCompletionsUrl, {
@@ -1120,16 +1128,16 @@ export default function SettingsModal({ isOpen, onClose, currentSettings, onSave
                   <input
                     type="text"
                     className="form-input"
-                    value="http://localhost:3000/v1"
+                    value={currentEndpointUrl}
                     readOnly
                     style={{ fontFamily: 'monospace', fontSize: '0.88rem', padding: '12px', backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)' }}
                   />
-                  <button type="button" className="btn btn-secondary" style={{ padding: '0 16px' }} onClick={() => copyToClipboard('http://localhost:3000/v1')}>
+                  <button type="button" className="btn btn-secondary" style={{ padding: '0 16px' }} onClick={() => copyToClipboard(currentEndpointUrl)}>
                     📋 Copy
                   </button>
                 </div>
                 <div style={{ marginTop: '6px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                  🚀 This endpoint routes requests directly through port 3000 and maps to the local proxy backend automatically.
+                  🚀 This endpoint routes through the gateway server and maps to the local proxy backend automatically.
                 </div>
               </div>
 

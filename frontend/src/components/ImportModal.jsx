@@ -49,7 +49,8 @@ export default function ImportModal({ isOpen, onClose, notebookId, onImportSucce
       setStatusMessage('Extracting study points in chunks... (This may take a moment to avoid context overflow)');
 
       const isDev = window.location.port === '5173' || window.location.port === '5174';
-      const base = isDev ? 'http://localhost:3000' : '';
+      const devPort = localStorage.getItem('studynotebook_gateway_port') || '3000';
+      const base = isDev ? `http://localhost:${devPort}` : '';
       const importApiUrl = `${base}/api/notebooks/${notebookId}/import-chat`;
 
       const res = await fetch(importApiUrl, {

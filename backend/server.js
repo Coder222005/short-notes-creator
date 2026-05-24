@@ -8,7 +8,9 @@ const { processAndAppendNotes } = require('./services/noteService');
 require('dotenv').config();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+// Port fallback: try multiple ports if the preferred one is busy
+const PREFERRED_PORTS = [3000, 3002, 3003, 3004];
+let ACTIVE_PORT = null;
 
 app.use(cors());
 app.use(express.json());
@@ -637,8 +639,47 @@ app.get('*', (req, res) => {
   }
 });
 
-// Start Server
-ensureSampleNotebook();
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+// Port discovery endpoint — allows frontend/scripts to detect the active gateway port
+app.get('/api/port', (req, res) => {
+  res.json({ port: ACTIVE_PORT });
 });
+
+// Start Server with port fallback
+ensureSampleNotebook();
+
+function tryListen(ports, index) {
+  if (index >= ports.length) {
+    console.error(`[FATAL] All preferred ports (${ports.join(', ')}) are in use. Cannot start server.`);
+    process.exit(1);
+  }
+
+  const port = ports[index];
+  const server = app.listen(port, () => {
+    ACTIVE_PORT = port;
+    console.log(`[OK] StudyNotebook Gateway running on http://localhost:${port}`);
+    if (port !== ports[0]) {
+      console.log(`     (Port ${ports[0]} was busy - fell back to ${port})`);
+    }
+  });
+
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.warn(`[WARN] Port ${port} is already in use, trying next...`);
+      tryListen(ports, index + 1);
+    } else {
+      console.error(`[ERROR] Failed to start on port ${port}:`, err.message);
+      process.exit(1);
+    }
+  });
+}
+
+// If PORT is set via environment variable, use only that port (no fallback)
+if (process.env.PORT) {
+  const envPort = parseInt(process.env.PORT, 10);
+  app.listen(envPort, () => {
+    ACTIVE_PORT = envPort;
+    console.log(`[OK] StudyNotebook Gateway running on http://localhost:${envPort} (via PORT env)`);
+  });
+} else {
+  tryListen(PREFERRED_PORTS, 0);
+}

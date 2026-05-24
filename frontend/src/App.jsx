@@ -3,7 +3,11 @@ import Sidebar from './components/Sidebar';
 import Workspace from './components/Workspace';
 import SettingsModal from './components/SettingsModal';
 
-const API_BASE = window.location.port === '5174' ? 'http://localhost:3000/api' : '/api';
+// In production, the frontend is served from the same Express server, so use relative paths.
+// In dev mode (Vite on 5173/5174), point to the gateway. Supports port fallback via localStorage override.
+const isDev = window.location.port === '5173' || window.location.port === '5174';
+const DEV_GATEWAY_PORT = localStorage.getItem('studynotebook_gateway_port') || '3000';
+const API_BASE = isDev ? `http://localhost:${DEV_GATEWAY_PORT}/api` : '/api';
 
 export default function App() {
   const [notebooks, setNotebooks] = useState([]);
