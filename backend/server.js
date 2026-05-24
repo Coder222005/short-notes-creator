@@ -303,6 +303,216 @@ app.post('/api/notebooks/:id/chat', async (req, res) => {
   }
 });
 
+// ChatGPT JSON Export Parser
+function parseChatGPTExport(json) {
+  const messages = [];
+  const conversations = Array.isArray(json) ? json : [json];
+  
+  for (const conv of conversations) {
+    if (!conv.mapping) continue;
+    const nodes = Object.values(conv.mapping);
+    const validMessages = nodes
+      .filter(node => node.message && node.message.content && node.message.content.parts)
+      .map(node => {
+        const msg = node.message;
+        const role = msg.author.role === 'user' ? 'user' : 'assistant';
+        const content = msg.content.parts.filter(p => typeof p === 'string').join('\n');
+        const createTime = msg.create_time ? new Date(msg.create_time * 1000).toISOString() : new Date().toISOString();
+        return { role, content, timestamp: createTime };
+      })
+      .filter(m => m.content.trim() !== '');
+      
+    validMessages.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    messages.push(...validMessages);
+  }
+  return messages;
+}
+
+// Gemini JSON Export Parser
+function parseGeminiExport(json) {
+  const messages = [];
+  if (Array.isArray(json)) {
+    for (const item of json) {
+      const role = (item.role === 'model' || item.role === 'assistant') ? 'assistant' : 'user';
+      const content = item.content || (item.parts && item.parts[0]?.text) || '';
+      if (content.trim()) {
+        messages.push({ role, content, timestamp: new Date().toISOString() });
+      }
+    }
+  } else if (json.conversations) {
+    const convs = Array.isArray(json.conversations) ? json.conversations : [json.conversations];
+    for (const conv of convs) {
+      if (conv.parts) {
+        for (const part of conv.parts) {
+          const role = (part.role === 'model' || part.role === 'assistant') ? 'assistant' : 'user';
+          const content = part.text || (part.parts && part.parts[0]?.text) || '';
+          if (content.trim()) {
+            messages.push({ role, content, timestamp: new Date().toISOString() });
+          }
+        }
+      }
+    }
+  }
+  return messages;
+}
+
+// Raw Copy-Pasted Text Parser
+function parseRawTextExport(text) {
+  const lines = text.split('\n');
+  const messages = [];
+  let currentRole = null;
+  let currentContent = [];
+  
+  const detectRole = (line) => {
+    const clean = line.trim().toLowerCase();
+    if (clean === 'you' || clean === 'user' || clean.startsWith('user:') || clean.startsWith('you:')) return 'user';
+    if (clean === 'gemini' || clean === 'chatgpt' || clean === 'assistant' || clean.startsWith('assistant:') || clean.startsWith('gemini:') || clean.startsWith('chatgpt:')) return 'assistant';
+    
+    const userPatterns = [/^(you|user)\s*:\s*/i, /^\[(you|user)\]/i];
+    const aiPatterns = [/^(gemini|chatgpt|assistant|ai|bot)\s*:\s*/i, /^\[(gemini|chatgpt|assistant|ai|bot)\]/i];
+    
+    for (const p of userPatterns) {
+      if (p.test(line)) return 'user';
+    }
+    for (const p of aiPatterns) {
+      if (p.test(line)) return 'assistant';
+    }
+    return null;
+  };
+  
+  const cleanLinePrefix = (line) => {
+    return line.replace(/^(you|user|gemini|chatgpt|assistant|ai|bot)\s*:\s*/i, '')
+               .replace(/^\[(you|user|gemini|chatgpt|assistant|ai|bot)\]\s*/i, '');
+  };
+
+  for (let line of lines) {
+    const role = detectRole(line);
+    if (role) {
+      if (currentRole && currentContent.join('\n').trim() !== '') {
+        messages.push({
+          role: currentRole,
+          content: currentContent.join('\n').trim(),
+          timestamp: new Date().toISOString()
+        });
+      }
+      currentRole = role;
+      currentContent = [cleanLinePrefix(line)];
+    } else {
+      if (currentRole) {
+        currentContent.push(line);
+      } else if (line.trim() !== '') {
+        currentRole = 'user';
+        currentContent = [line];
+      }
+    }
+  }
+  
+  if (currentRole && currentContent.join('\n').trim() !== '') {
+    messages.push({
+      role: currentRole,
+      content: currentContent.join('\n').trim(),
+      timestamp: new Date().toISOString()
+    });
+  }
+  return messages;
+}
+
+// Chat Import API Route
+app.post('/api/notebooks/:id/import-chat', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { rawData, format, llmConfig } = req.body;
+
+    const notebookFolder = getNotebookPath(id);
+    if (!fs.existsSync(notebookFolder)) {
+      return res.status(404).json({ error: 'Notebook not found' });
+    }
+
+    let parsedMessages = [];
+    if (format === 'chatgpt_json') {
+      let jsonParsed;
+      try {
+        jsonParsed = typeof rawData === 'string' ? JSON.parse(rawData) : rawData;
+      } catch (e) {
+        return res.status(400).json({ error: 'Invalid JSON payload for ChatGPT export.' });
+      }
+      parsedMessages = parseChatGPTExport(jsonParsed);
+    } else if (format === 'gemini_json') {
+      let jsonParsed;
+      try {
+        jsonParsed = typeof rawData === 'string' ? JSON.parse(rawData) : rawData;
+      } catch (e) {
+        return res.status(400).json({ error: 'Invalid JSON payload for Gemini export.' });
+      }
+      parsedMessages = parseGeminiExport(jsonParsed);
+    } else {
+      parsedMessages = parseRawTextExport(rawData || '');
+    }
+
+    if (parsedMessages.length === 0) {
+      return res.status(400).json({ error: 'No valid messages found in the input.' });
+    }
+
+    const chatFile = getChatPath(id);
+    const notesFile = getNotesPath(id);
+
+    let chatHistory = JSON.parse(fs.readFileSync(chatFile, 'utf8'));
+    let currentNotes = fs.readFileSync(notesFile, 'utf8');
+
+    const stampedMessages = parsedMessages.map((m, idx) => ({
+      id: `msg_imported_${Date.now()}_${idx}`,
+      role: m.role,
+      content: m.content,
+      timestamp: m.timestamp || new Date().toISOString()
+    }));
+
+    // Process in chunks of 8 messages to prevent context window overflow
+    const CHUNK_SIZE = 8;
+    let updatedNotes = currentNotes;
+    let newAppendedNotes = '';
+
+    console.log(`Processing imported chat of ${stampedMessages.length} messages in chunks of ${CHUNK_SIZE}...`);
+
+    for (let i = 0; i < stampedMessages.length; i += CHUNK_SIZE) {
+      const chunk = stampedMessages.slice(i, i + CHUNK_SIZE);
+      
+      try {
+        const { notesToAppend } = await processAndAppendNotes({
+          message: 'Process this segment of imported chat log and extract key points.',
+          chatHistory: chunk,
+          currentNotes: updatedNotes,
+          llmConfig
+        });
+
+        if (notesToAppend && notesToAppend.trim() !== '') {
+          updatedNotes = updatedNotes.trim() + '\n\n' + notesToAppend.trim() + '\n';
+          newAppendedNotes = newAppendedNotes.trim() + '\n\n' + notesToAppend.trim() + '\n';
+        }
+      } catch (err) {
+        console.error(`Error processing import chunk starting at index ${i}:`, err.message);
+      }
+    }
+
+    chatHistory.push(...stampedMessages);
+
+    fs.writeFileSync(chatFile, JSON.stringify(chatHistory, null, 2), 'utf8');
+    fs.writeFileSync(notesFile, updatedNotes, 'utf8');
+
+    res.json({
+      success: true,
+      importedCount: stampedMessages.length,
+      appendedNotes: newAppendedNotes,
+      updatedNotes,
+      chatHistory
+    });
+
+  } catch (error) {
+    console.error('Error importing chat history:', error);
+    res.status(500).json({ error: error.message || 'Failed to import chat history' });
+  }
+});
+
+
 // Serve frontend build static files
 const frontendDistPath = path.join(__dirname, '../frontend/dist');
 app.use(express.static(frontendDistPath));

@@ -208,6 +208,14 @@ export default function App() {
     localStorage.setItem('study_notebook_settings', JSON.stringify(newSettings));
   };
 
+  const handleImportSuccess = (data) => {
+    setActiveNotebookData(prev => ({
+      ...prev,
+      chat: data.chatHistory,
+      notes: data.updatedNotes
+    }));
+  };
+
   const activeNotebook = notebooks.find(n => n.id === activeId);
 
   return (
@@ -251,6 +259,7 @@ export default function App() {
           isLoadingChat={isLoadingChat}
           isLoadingNotes={isLoadingNotes}
           llmConfig={settings}
+          onImportSuccess={handleImportSuccess}
         />
       </main>
 

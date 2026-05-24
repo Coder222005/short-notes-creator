@@ -43,6 +43,17 @@ export default function SettingsModal({ isOpen, onClose, currentSettings, onSave
   const [analyticsByPlatform, setAnalyticsByPlatform] = useState([]);
   const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(false);
 
+  // Key testing states
+  const [testingKeyId, setTestingKeyId] = useState(null);
+  const [testResult, setTestResult] = useState({});
+
+  // Test Chat Playground States
+  const [playgroundPlatform, setPlaygroundPlatform] = useState('auto');
+  const [playgroundMessage, setPlaygroundMessage] = useState('hi');
+  const [playgroundResult, setPlaygroundResult] = useState('');
+  const [isSendingPlayground, setIsSendingPlayground] = useState(false);
+  const [playgroundStatus, setPlaygroundStatus] = useState(''); // 'success' | 'error' | ''
+
   const [isLoading, setIsLoading] = useState(false);
 
   // Helper to resolve proxy endpoint address
@@ -60,6 +71,13 @@ export default function SettingsModal({ isOpen, onClose, currentSettings, onSave
       fetchAllData();
     }
   }, [isOpen, currentSettings]);
+
+  // Auto-correct model if provider is freellmapi but model is fallback or custom
+  useEffect(() => {
+    if (provider === 'freellmapi' && (model === 'fallback' || model === 'custom')) {
+      setModel('auto');
+    }
+  }, [provider, model]);
 
   // Refetch analytics when range or tab changes
   useEffect(() => {
@@ -218,6 +236,118 @@ export default function SettingsModal({ isOpen, onClose, currentSettings, onSave
     }
   };
 
+  const handleTestKey = async (key) => {
+    setTestingKeyId(key.id);
+    setTestResult(prev => ({ 
+      ...prev, 
+      [key.id]: { status: 'testing', message: 'Testing connection...' } 
+    }));
+    
+    try {
+      // Find a matching model for the platform to route correctly
+      const matchingModel = modelsList.find(m => m.platform === key.platform);
+      const testModelId = matchingModel ? matchingModel.modelId : 'auto';
+      
+      const isDev = window.location.port === '5173' || window.location.port === '5174';
+      const base = isDev ? 'http://localhost:3000' : '';
+      const chatCompletionsUrl = `${base}/v1/chat/completions`;
+
+      const res = await fetch(chatCompletionsUrl, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: testModelId,
+          messages: [{ role: 'user', content: 'Say "OK"' }],
+          max_tokens: 5
+        })
+      });
+
+      if (res.ok) {
+        setTestResult(prev => ({
+          ...prev,
+          [key.id]: { status: 'success', message: 'Success' }
+        }));
+      } else {
+        const errText = await res.text();
+        let parsedErr;
+        try {
+          parsedErr = JSON.parse(errText);
+        } catch(e) {}
+        const errMsg = parsedErr?.error?.message || errText || `Status ${res.status}`;
+        setTestResult(prev => ({
+          ...prev,
+          [key.id]: { status: 'error', message: errMsg }
+        }));
+      }
+    } catch (e) {
+      setTestResult(prev => ({
+        ...prev,
+        [key.id]: { status: 'error', message: e.message }
+      }));
+    } finally {
+      setTestingKeyId(null);
+    }
+  };
+
+  const handleSendPlaygroundMessage = async (e) => {
+    e.preventDefault();
+    if (!playgroundMessage.trim()) return;
+
+    setIsSendingPlayground(true);
+    setPlaygroundStatus('');
+    setPlaygroundResult('Routing request and waiting for response...');
+
+    try {
+      let testModelId = 'auto';
+      if (playgroundPlatform !== 'auto') {
+        const matchingModel = modelsList.find(m => m.platform === playgroundPlatform);
+        testModelId = matchingModel ? matchingModel.modelId : 'auto';
+      }
+
+      const isDev = window.location.port === '5173' || window.location.port === '5174';
+      const base = isDev ? 'http://localhost:3000' : '';
+      const chatCompletionsUrl = `${base}/v1/chat/completions`;
+
+      const res = await fetch(chatCompletionsUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: testModelId,
+          messages: [{ role: 'user', content: playgroundMessage.trim() }],
+          temperature: 0.3
+        })
+      });
+
+      const bodyText = await res.text();
+      let parsed;
+      try {
+        parsed = JSON.parse(bodyText);
+      } catch (err) {}
+
+      if (res.ok) {
+        setPlaygroundStatus('success');
+        if (parsed && parsed.choices && parsed.choices[0] && parsed.choices[0].message) {
+          setPlaygroundResult(parsed.choices[0].message.content);
+        } else {
+          setPlaygroundResult(bodyText);
+        }
+      } else {
+        setPlaygroundStatus('error');
+        const errMsg = parsed?.error?.message || bodyText || `Status ${res.status}`;
+        setPlaygroundResult(`API Error (Status ${res.status}):\n${errMsg}`);
+      }
+    } catch (err) {
+      setPlaygroundStatus('error');
+      setPlaygroundResult(`Network Connection Error:\n${err.message}`);
+    } finally {
+      setIsSendingPlayground(false);
+    }
+  };
+
   // Fallback operations
   const handleSortFallback = async (preset) => {
     try {
@@ -308,10 +438,14 @@ export default function SettingsModal({ isOpen, onClose, currentSettings, onSave
   // Save Config
   const handleApplyConfig = (e) => {
     e.preventDefault();
+    let resolvedModel = model;
+    if (provider === 'freellmapi' && (resolvedModel === 'fallback' || resolvedModel === 'custom')) {
+      resolvedModel = 'auto';
+    }
     onSaveSettings({
       provider,
       apiKey: '',
-      model: provider === 'fallback' ? 'fallback' : model
+      model: provider === 'fallback' ? 'fallback' : resolvedModel
     });
     onClose();
   };
@@ -503,6 +637,7 @@ export default function SettingsModal({ isOpen, onClose, currentSettings, onSave
                           <th style={{ padding: '10px 16px' }}>Key</th>
                           <th style={{ padding: '10px 16px' }}>Status</th>
                           <th style={{ padding: '10px 16px', textAlign: 'center' }}>Enabled</th>
+                          <th style={{ padding: '10px 16px', textAlign: 'center' }}>Diagnostics</th>
                           <th style={{ padding: '10px 16px', textAlign: 'center' }}>Action</th>
                         </tr>
                       </thead>
@@ -542,6 +677,27 @@ export default function SettingsModal({ isOpen, onClose, currentSettings, onSave
                                 />
                               </td>
                               <td style={{ padding: '10px 16px', textAlign: 'center' }}>
+                                {testResult[k.id] ? (
+                                  <span style={{ 
+                                    fontSize: '0.74rem', 
+                                    color: testResult[k.id].status === 'success' ? '#10b981' : testResult[k.id].status === 'testing' ? 'var(--text-muted)' : '#ef4444',
+                                    fontWeight: 500
+                                  }}>
+                                    {testResult[k.id].status === 'testing' ? '⏳ Testing...' : testResult[k.id].status === 'success' ? '✅ Working' : `❌ Error`}
+                                  </span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    style={{ padding: '4px 10px', fontSize: '0.72rem', borderColor: 'rgba(123, 164, 247, 0.2)', color: 'var(--accent-color)' }}
+                                    onClick={() => handleTestKey(k)}
+                                    disabled={testingKeyId !== null}
+                                  >
+                                    ⚡ Test Key
+                                  </button>
+                                )}
+                              </td>
+                              <td style={{ padding: '10px 16px', textAlign: 'center' }}>
                                 <button
                                   type="button"
                                   className="action-btn delete"
@@ -558,6 +714,91 @@ export default function SettingsModal({ isOpen, onClose, currentSettings, onSave
                     </table>
                   </div>
                 )}
+
+                {/* Test Chat Playground */}
+                <div style={{ marginTop: '24px', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '18px', backgroundColor: 'rgba(255,255,255,0.015)' }}>
+                  <h4 style={{ fontFamily: 'Outfit', fontSize: '0.95rem', fontWeight: 600, marginBottom: '12px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span>⚡</span> Key Diagnostics & Test Chat Playground
+                  </h4>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '16px', lineHeight: 1.4 }}>
+                    Type a message below to test connection health, model routing, and see response outputs in real-time.
+                  </p>
+
+                  <form onSubmit={handleSendPlaygroundMessage}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 2fr auto', gap: '12px', alignItems: 'flex-end', marginBottom: '14px' }}>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label className="form-label" style={{ fontSize: '0.75rem' }}>Select Platform Key</label>
+                        <select
+                          className="form-select"
+                          style={{ padding: '8px 12px', fontSize: '0.88rem' }}
+                          value={playgroundPlatform}
+                          onChange={(e) => setPlaygroundPlatform(e.target.value)}
+                        >
+                          <option value="auto">Auto-Rotate (First Available)</option>
+                          {keysList.map(k => (
+                            <option key={k.id} value={k.platform}>
+                              {PLATFORM_MAP[k.platform] || k.platform} ({k.label || 'no label'})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label className="form-label" style={{ fontSize: '0.75rem' }}>Test Chat Message</label>
+                        <input
+                          type="text"
+                          className="form-input"
+                          style={{ padding: '8px 12px', fontSize: '0.88rem' }}
+                          placeholder="e.g. hi, suggest best method"
+                          value={playgroundMessage}
+                          onChange={(e) => setPlaygroundMessage(e.target.value)}
+                          required
+                        />
+                      </div>
+
+                      <button
+                        type="submit"
+                        className="btn btn-primary"
+                        style={{ padding: '10px 20px', fontSize: '0.85rem', minWidth: '130px' }}
+                        disabled={isSendingPlayground}
+                      >
+                        {isSendingPlayground ? 'Sending...' : 'Send Test Chat'}
+                      </button>
+                    </div>
+                  </form>
+
+                  {playgroundResult && (
+                    <div style={{ 
+                      marginTop: '12px', 
+                      padding: '12px', 
+                      borderRadius: '8px', 
+                      border: `1px solid ${playgroundStatus === 'success' ? 'rgba(16, 185, 129, 0.2)' : playgroundStatus === 'error' ? 'rgba(239, 68, 68, 0.2)' : 'var(--border-color)'}`,
+                      backgroundColor: playgroundStatus === 'success' ? 'rgba(16, 185, 129, 0.02)' : playgroundStatus === 'error' ? 'rgba(239, 68, 68, 0.02)' : 'var(--bg-tertiary)'
+                    }}>
+                      <div style={{ 
+                        fontSize: '0.72rem', 
+                        fontWeight: 600, 
+                        textTransform: 'uppercase', 
+                        color: playgroundStatus === 'success' ? '#10b981' : playgroundStatus === 'error' ? '#ef4444' : 'var(--text-muted)',
+                        marginBottom: '6px'
+                      }}>
+                        {playgroundStatus === 'success' ? 'Response Output' : playgroundStatus === 'error' ? 'Diagnostic Error' : 'Status'}
+                      </div>
+                      <pre style={{ 
+                        margin: 0, 
+                        fontSize: '0.82rem', 
+                        whiteSpace: 'pre-wrap', 
+                        fontFamily: 'monospace', 
+                        color: playgroundStatus === 'error' ? '#ef4444' : 'var(--text-secondary)',
+                        maxHeight: '150px',
+                        overflowY: 'auto',
+                        lineHeight: 1.45
+                      }}>
+                        {playgroundResult}
+                      </pre>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Right Column: Help Desk */}

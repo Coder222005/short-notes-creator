@@ -47,7 +47,11 @@ async function queryLLM({ provider, apiKey, model, messages, systemPrompt }) {
   // 1. FREELLMAPI PROXY ROUTING
   if (provider === 'freellmapi') {
     try {
-      console.log(`Routing completions query to FreeLLMAPI [model: ${model || 'auto'}]`);
+      let resolvedModel = model;
+      if (!resolvedModel || resolvedModel === 'fallback' || resolvedModel === 'custom') {
+        resolvedModel = 'auto';
+      }
+      console.log(`Routing completions query to FreeLLMAPI [model: ${resolvedModel}]`);
       
       // Fetch the unified API key from local FreeLLMAPI server on port 3001
       let freeLlmKey = '';
@@ -68,7 +72,7 @@ async function queryLLM({ provider, apiKey, model, messages, systemPrompt }) {
           'Authorization': `Bearer ${freeLlmKey}`
         },
         body: JSON.stringify({
-          model: model || 'auto',
+          model: resolvedModel,
           messages: apiMessages,
           temperature: 0.3
         })
@@ -90,7 +94,13 @@ async function queryLLM({ provider, apiKey, model, messages, systemPrompt }) {
       console.error('FreeLLMAPI routing failed, falling back to local summarizer:', err.message);
       updateStats('fallback');
       const fallbackResult = runFallbackProcessor(messages);
-      return `⚠️ FreeLLMAPI proxy error (${err.message}). Falling back to offline summarizer.\n\n${fallbackResult}`;
+      try {
+        const parsedFallback = JSON.parse(fallbackResult);
+        parsedFallback.chat_response = `⚠️ FreeLLMAPI proxy error (${err.message}). Falling back to offline summarizer.\n\n${parsedFallback.chat_response}`;
+        return JSON.stringify(parsedFallback);
+      } catch (jsonErr) {
+        return `⚠️ FreeLLMAPI proxy error (${err.message}). Falling back to offline summarizer.\n\n${fallbackResult}`;
+      }
     }
   }
 
@@ -145,7 +155,13 @@ async function queryLLM({ provider, apiKey, model, messages, systemPrompt }) {
   console.error('All LLM providers failed. Falling back to offline mode.');
   updateStats('fallback');
   const fallbackResult = runFallbackProcessor(messages);
-  return `⚠️ API Rotation Failed (${lastError ? lastError.message : 'No keys set'}). Falling back to offline summarizer.\n\n${fallbackResult}`;
+  try {
+    const parsedFallback = JSON.parse(fallbackResult);
+    parsedFallback.chat_response = `⚠️ API Rotation Failed (${lastError ? lastError.message : 'No keys set'}). Falling back to offline summarizer.\n\n${parsedFallback.chat_response}`;
+    return JSON.stringify(parsedFallback);
+  } catch (jsonErr) {
+    return `⚠️ API Rotation Failed (${lastError ? lastError.message : 'No keys set'}). Falling back to offline summarizer.\n\n${fallbackResult}`;
+  }
 }
 
 /**

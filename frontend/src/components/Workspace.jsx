@@ -10,7 +10,8 @@ export default function Workspace({
   onSaveNotes,
   isLoadingChat,
   isLoadingNotes,
-  llmConfig
+  llmConfig,
+  onImportSuccess
 }) {
   if (!activeNotebook) {
     return (
@@ -41,7 +42,9 @@ export default function Workspace({
         onSendMessage={onSendMessage}
         isLoading={isLoadingChat}
         notebookName={activeNotebook.name}
+        notebookId={activeNotebook.id}
         llmConfig={llmConfig}
+        onImportSuccess={onImportSuccess}
       />
       <NotesPanel
         notesContent={notesContent}

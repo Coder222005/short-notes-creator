@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import ImportModal from './ImportModal';
 
 // Lightweight custom Markdown parser
 export function MarkdownRenderer({ text }) {
@@ -118,9 +119,12 @@ export default function ChatPanel({
   onSendMessage,
   isLoading,
   notebookName,
-  llmConfig
+  notebookId,
+  llmConfig,
+  onImportSuccess
 }) {
   const [input, setInput] = useState('');
+  const [isImportOpen, setIsImportOpen] = useState(false);
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
 
@@ -272,12 +276,41 @@ export default function ChatPanel({
             </button>
           </div>
           <div className="chat-actions-row">
-            <div className="chat-action-left-btns" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-              Shift + Enter for new line. Active: <strong>{llmConfig.model}</strong>
+            <div className="chat-action-left-btns" style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+              <span>Shift + Enter for new line. Active: <strong>{llmConfig.model}</strong></span>
+              <span style={{ color: 'var(--border-color)' }}>|</span>
+              <button
+                type="button"
+                onClick={() => setIsImportOpen(true)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--accent-color)',
+                  cursor: 'pointer',
+                  fontWeight: 500,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '2px 6px',
+                  borderRadius: '4px',
+                  transition: 'background-color 0.2s'
+                }}
+                title="Import chat history from ChatGPT or Gemini"
+              >
+                📥 Import ChatGPT/Gemini Chat
+              </button>
             </div>
           </div>
         </form>
       </div>
+
+      <ImportModal
+        isOpen={isImportOpen}
+        onClose={() => setIsImportOpen(false)}
+        notebookId={notebookId}
+        onImportSuccess={onImportSuccess}
+        llmConfig={llmConfig}
+      />
     </div>
   );
 }
