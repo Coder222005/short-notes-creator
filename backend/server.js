@@ -30,6 +30,67 @@ const getMetaPath = (id) => path.join(getNotebookPath(id), 'meta.json');
 const getChatPath = (id) => path.join(getNotebookPath(id), 'chat.json');
 const getNotesPath = (id) => path.join(getNotebookPath(id), 'notes.md');
 
+function ensureSampleNotebook() {
+  try {
+    if (!fs.existsSync(NOTEBOOKS_DIR)) {
+      fs.mkdirSync(NOTEBOOKS_DIR, { recursive: true });
+    }
+    const dirs = fs.readdirSync(NOTEBOOKS_DIR);
+    if (dirs.length === 0) {
+      console.log('Seeding Sample Study Notebook...');
+      const sampleId = 'nb_sample_study';
+      const sampleFolder = getNotebookPath(sampleId);
+      fs.mkdirSync(sampleFolder, { recursive: true });
+
+      const meta = {
+        id: sampleId,
+        name: '💡 Sample Study: Photosynthesis',
+        createdTime: new Date().toISOString()
+      };
+
+      const notes = `# 💡 Sample Study: Photosynthesis\n\nWelcome to your study notebook! This sample notebook demonstrates how StudyNotebook compiles your study materials into structured revision notes.\n\n### 📝 Core Concepts: Light Reactions\n* **Photosynthesis** is the process used by plants to convert light energy into chemical energy (glucose).\n* **Chloroplasts** are the organelles where photosynthesis occurs, containing the pigment chlorophyll.\n* **Light-dependent reactions** occur in the thylakoid membranes, splitting water molecules ($H_2O$) to release oxygen ($O_2$) and produce ATP/NADPH.\n`;
+
+      const chat = [
+        {
+          id: 'msg_sample_u1',
+          role: 'user',
+          content: 'Photosynthesis is how plants make food using sunlight. It takes place in chloroplasts, specifically using chlorophyll to absorb light. The first stage is the light-dependent reactions where water is split to release oxygen.',
+          timestamp: new Date(Date.now() - 120000).toISOString()
+        },
+        {
+          id: 'msg_sample_a1',
+          role: 'assistant',
+          content: 'That is a perfect summary of the initial stage of photosynthesis! I have extracted these points as study notes for your revision. You can review them in the proposed notes block below.',
+          notesDraft: '### 📝 Core Concepts: Light Reactions\n* **Photosynthesis** is the process used by plants to convert light energy into chemical energy (glucose).\n* **Chloroplasts** are the organelles where photosynthesis occurs, containing the pigment chlorophyll.\n* **Light-dependent reactions** occur in the thylakoid membranes, splitting water molecules ($H_2O$) to release oxygen ($O_2$) and produce ATP/NADPH.',
+          notesAdded: true,
+          timestamp: new Date(Date.now() - 90000).toISOString()
+        },
+        {
+          id: 'msg_sample_u2',
+          role: 'user',
+          content: 'What about the second stage? I think it is called the Calvin cycle or light-independent reactions. Tell me about it so I can add it to my notes.',
+          timestamp: new Date(Date.now() - 60000).toISOString()
+        },
+        {
+          id: 'msg_sample_a2',
+          role: 'assistant',
+          content: 'Exactly! The second stage is the **Calvin Cycle** (or light-independent reactions). It occurs in the stroma of the chloroplast and uses carbon dioxide along with ATP and NADPH from the light reactions to synthesize glucose.\n\nReview the proposed points below and click **"Add to Notes"** to merge them into your compiler!',
+          notesDraft: '### 🔄 The Calvin Cycle (Light-Independent Reactions)\n* Occurs in the **stroma** of the chloroplast.\n* Uses carbon dioxide ($CO_2$) and chemical energy (ATP and NADPH) to synthesize **glucose**.\n* Does not require direct sunlight but relies on products of the light-dependent stage.',
+          notesAdded: false,
+          timestamp: new Date(Date.now() - 30000).toISOString()
+        }
+      ];
+
+      fs.writeFileSync(getMetaPath(sampleId), JSON.stringify(meta, null, 2), 'utf8');
+      fs.writeFileSync(getNotesPath(sampleId), notes, 'utf8');
+      fs.writeFileSync(getChatPath(sampleId), JSON.stringify(chat, null, 2), 'utf8');
+      console.log('Sample Study Notebook seeded successfully.');
+    }
+  } catch (error) {
+    console.error('Failed to seed sample notebook:', error);
+  }
+}
+
 // 1. REVERSE PROXY TO FREELLMAPI (port 3001)
 const proxyRequest = async (targetPath, req, res) => {
   try {
@@ -278,28 +339,78 @@ app.post('/api/notebooks/:id/chat', async (req, res) => {
       id: `msg_${Date.now()}_a`,
       role: 'assistant',
       content: reply,
+      notesDraft: notesToAppend || '',
+      notesAdded: false,
       timestamp: new Date().toISOString(),
     };
     chatHistory.push(assistantMessage);
 
+    fs.writeFileSync(chatFile, JSON.stringify(chatHistory, null, 2), 'utf8');
+
+    res.json({
+      reply,
+      notesDraft: notesToAppend || '',
+      notesAdded: false,
+      chatHistory,
+    });
+  } catch (error) {
+    console.error('Error in chat processing:', error);
+    res.status(500).json({ error: error.message || 'Failed to process chat request' });
+  }
+});
+
+// Accept proposed notes draft
+app.post('/api/notebooks/:id/accept-notes', (req, res) => {
+  try {
+    const { id } = req.params;
+    const { messageId, notes } = req.body;
+
+    const notebookFolder = getNotebookPath(id);
+    if (!fs.existsSync(notebookFolder)) {
+      return res.status(404).json({ error: 'Notebook not found' });
+    }
+
+    const chatFile = getChatPath(id);
+    const notesFile = getNotesPath(id);
+
+    if (!fs.existsSync(chatFile) || !fs.existsSync(notesFile)) {
+      return res.status(400).json({ error: 'Notebook files missing' });
+    }
+
+    let chatHistory = JSON.parse(fs.readFileSync(chatFile, 'utf8'));
+    let currentNotes = fs.readFileSync(notesFile, 'utf8');
+
+    // Mark the draft as added in history
+    let found = false;
+    chatHistory = chatHistory.map(msg => {
+      if (msg.id === messageId) {
+        msg.notesAdded = true;
+        found = true;
+      }
+      return msg;
+    });
+
+    if (!found) {
+      return res.status(404).json({ error: 'Target message not found' });
+    }
+
+    // Append notes
     let updatedNotes = currentNotes;
-    if (notesToAppend && notesToAppend.trim() !== '') {
-      const cleanNotesToAppend = notesToAppend.trim();
-      updatedNotes = currentNotes + '\n\n' + cleanNotesToAppend + '\n';
+    if (notes && notes.trim() !== '') {
+      updatedNotes = currentNotes.trim() + '\n\n' + notes.trim() + '\n';
       fs.writeFileSync(notesFile, updatedNotes, 'utf8');
     }
 
     fs.writeFileSync(chatFile, JSON.stringify(chatHistory, null, 2), 'utf8');
 
     res.json({
-      reply,
-      appendedNotes: notesToAppend || '',
+      success: true,
       updatedNotes,
-      chatHistory,
+      chatHistory
     });
   } catch (error) {
-    console.error('Error in chat processing:', error);
-    res.status(500).json({ error: error.message || 'Failed to process chat request' });
+    console.error('Error accepting notes draft:', error);
+    res.status(500).json({ error: error.message || 'Failed to accept notes draft' });
   }
 });
 
@@ -527,6 +638,7 @@ app.get('*', (req, res) => {
 });
 
 // Start Server
+ensureSampleNotebook();
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });

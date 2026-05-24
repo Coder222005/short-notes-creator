@@ -121,7 +121,8 @@ export default function ChatPanel({
   notebookName,
   notebookId,
   llmConfig,
-  onImportSuccess
+  onImportSuccess,
+  onAcceptNotes
 }) {
   const [input, setInput] = useState('');
   const [isImportOpen, setIsImportOpen] = useState(false);
@@ -227,6 +228,42 @@ export default function ChatPanel({
                 </span>
                 <div className="message-content">
                   <MarkdownRenderer text={msg.content} />
+                  
+                  {msg.notesDraft && msg.notesDraft.trim() !== '' && (
+                    <div style={{
+                      marginTop: '12px',
+                      padding: '12px',
+                      borderRadius: '8px',
+                      border: '1px solid var(--border-color)',
+                      backgroundColor: 'rgba(255, 255, 255, 0.02)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '8px'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '6px', fontSize: '0.8rem', color: 'var(--accent-color)', fontWeight: 600 }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span>📝</span> Proposed Study Notes
+                        </span>
+                        {msg.notesAdded ? (
+                          <span style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
+                            ✓ Added to Notes
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => onAcceptNotes(msg.id, msg.notesDraft)}
+                            className="btn btn-primary"
+                            style={{ padding: '4px 10px', fontSize: '0.75rem', borderRadius: '4px' }}
+                          >
+                            ✓ Add to Notes
+                          </button>
+                        )}
+                      </div>
+                      <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                        <MarkdownRenderer text={msg.notesDraft} />
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

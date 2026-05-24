@@ -202,6 +202,32 @@ export default function App() {
     }
   };
 
+  // Accept proposed notes draft
+  const handleAcceptNotes = async (messageId, notes) => {
+    if (!activeId) return;
+    try {
+      const res = await fetch(`${API_BASE}/notebooks/${activeId}/accept-notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messageId, notes })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setActiveNotebookData(prev => ({
+          ...prev,
+          chat: data.chatHistory,
+          notes: data.updatedNotes
+        }));
+      } else {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to accept notes draft');
+      }
+    } catch (e) {
+      console.error('Error accepting notes:', e);
+      alert(`Error: ${e.message}`);
+    }
+  };
+
   // Save settings
   const handleSaveSettings = (newSettings) => {
     setSettings(newSettings);
@@ -260,6 +286,7 @@ export default function App() {
           isLoadingNotes={isLoadingNotes}
           llmConfig={settings}
           onImportSuccess={handleImportSuccess}
+          onAcceptNotes={handleAcceptNotes}
         />
       </main>
 
