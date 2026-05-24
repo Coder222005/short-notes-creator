@@ -57,6 +57,16 @@ if not exist "backend\node_modules\" (
     )
 )
 
+:: Check for stale Vite 8 / Rolldown leftovers (causes build crash on Node 22.x)
+if exist "frontend\node_modules\rolldown\" (
+    echo   [WARN] Detected stale Vite 8 cache. Cleaning frontend...
+    pushd frontend
+    rmdir /s /q node_modules 2>nul
+    del /q package-lock.json 2>nul
+    rmdir /s /q dist 2>nul
+    popd
+)
+
 if not exist "frontend\node_modules\" (
     echo   Installing frontend dependencies...
     pushd frontend
@@ -66,6 +76,10 @@ if not exist "frontend\node_modules\" (
         echo [ERROR] Failed to install frontend dependencies.
         pause
         exit /b 1
+    )
+    :: Force rebuild after fresh install
+    if exist "frontend\dist\" (
+        rmdir /s /q "frontend\dist" 2>nul
     )
 )
 
