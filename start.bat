@@ -14,7 +14,17 @@ cd /d "%ROOT%"
 where node >nul 2>nul
 if %errorlevel% neq 0 (
     echo [ERROR] Node.js is not installed or not in PATH.
-    echo Please install Node.js version 20 or later from https://nodejs.org/
+    echo Please install Node.js version 18 or later from https://nodejs.org/
+    pause
+    exit /b 1
+)
+
+:: Check Node.js major version (must be >= 18)
+for /f "tokens=1 delims=v." %%V in ('node -v') do set "NODE_MAJOR=%%V"
+if !NODE_MAJOR! LSS 18 (
+    echo [ERROR] Node.js version is too old. Found: 
+    node --version
+    echo Please upgrade to Node.js 18 or later from https://nodejs.org/
     pause
     exit /b 1
 )
