@@ -25,7 +25,7 @@ if (!fs.existsSync(NOTEBOOKS_DIR)) {
   fs.mkdirSync(NOTEBOOKS_DIR, { recursive: true });
 }
 if (!fs.existsSync(KEYS_FILE)) {
-  fs.writeFileSync(KEYS_FILE, JSON.stringify({ gemini: '', groq: '', openrouter: '' }, null, 2), 'utf8');
+  fs.writeFileSync(KEYS_FILE, JSON.stringify({ gemini: '', groq: '', openrouter: '', freellmapi: '' }, null, 2), 'utf8');
 }
 
 // Helpers for paths
@@ -55,11 +55,12 @@ app.get('/api/keys', (req, res) => {
 
 app.post('/api/keys', (req, res) => {
   try {
-    const { gemini, groq, openrouter } = req.body;
+    const { gemini, groq, openrouter, freellmapi } = req.body;
     const keys = {
       gemini: gemini || '',
       groq: groq || '',
-      openrouter: openrouter || ''
+      openrouter: openrouter || '',
+      freellmapi: freellmapi || ''
     };
     fs.writeFileSync(KEYS_FILE, JSON.stringify(keys, null, 2), 'utf8');
     res.json({ success: true, message: 'Keys updated successfully' });

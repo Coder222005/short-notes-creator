@@ -7,14 +7,16 @@ const KEYS_FILE = path.join(__dirname, '..', 'data', 'keys.json');
 const DEFAULT_MODELS = {
   gemini: 'gemini-1.5-flash',
   groq: 'llama-3.1-8b-instant',
-  openrouter: 'google/gemini-2.5-flash:free'
+  openrouter: 'google/gemini-2.5-flash:free',
+  freellmapi: 'auto'
 };
 
 // Endpoints for each provider
 const ENDPOINTS = {
   gemini: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
   groq: 'https://api.groq.com/openai/v1/chat/completions',
-  openrouter: 'https://openrouter.ai/api/v1/chat/completions'
+  openrouter: 'https://openrouter.ai/api/v1/chat/completions',
+  freellmapi: 'http://localhost:3001/v1/chat/completions'
 };
 
 /**
@@ -22,7 +24,7 @@ const ENDPOINTS = {
  */
 async function queryLLM({ provider, apiKey, model, messages, systemPrompt }) {
   // Read saved vault keys from file
-  let vaultKeys = { gemini: '', groq: '', openrouter: '' };
+  let vaultKeys = { gemini: '', groq: '', openrouter: '', freellmapi: '' };
   try {
     if (fs.existsSync(KEYS_FILE)) {
       vaultKeys = JSON.parse(fs.readFileSync(KEYS_FILE, 'utf8'));

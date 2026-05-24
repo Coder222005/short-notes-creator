@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 const PROVIDER_DEFAULT_MODELS = {
   fallback: 'Offline Summary (No Key Required)',
   auto: 'Auto-Rotate Across Keys',
+  freellmapi: 'auto',
   openrouter: 'google/gemini-2.5-flash:free',
   gemini: 'gemini-1.5-flash',
   groq: 'llama-3.1-8b-instant'
@@ -11,6 +12,12 @@ const PROVIDER_DEFAULT_MODELS = {
 const MODEL_OPTIONS = {
   auto: [
     { value: 'auto', label: 'Dynamic Rotation (Key Priority Chain)' }
+  ],
+  freellmapi: [
+    { value: 'auto', label: 'Auto (Let FreeLLMAPI decide)' },
+    { value: 'google/gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
+    { value: 'meta-llama/llama-3.3-70b-instruct', label: 'Llama 3.3 70B' },
+    { value: 'qwen/qwen-2.5-72b-instruct', label: 'Qwen 2.5 72B' }
   ],
   openrouter: [
     { value: 'google/gemini-2.5-flash:free', label: 'Gemini 2.5 Flash (Free)' },
@@ -42,7 +49,8 @@ export default function SettingsModal({ isOpen, onClose, currentSettings, onSave
   const [vaultKeys, setVaultKeys] = useState({
     gemini: '',
     groq: '',
-    openrouter: ''
+    openrouter: '',
+    freellmapi: ''
   });
   const [isLoadingKeys, setIsLoadingKeys] = useState(false);
 
@@ -174,6 +182,7 @@ export default function SettingsModal({ isOpen, onClose, currentSettings, onSave
                 >
                   <option value="fallback">Offline (Fallback Mode - No Keys)</option>
                   <option value="auto">Auto-Rotate (Uses Keys Vault)</option>
+                  <option value="freellmapi">FreeLLMAPI (Local proxy on port 3001)</option>
                   <option value="gemini">Google Gemini API (Direct)</option>
                   <option value="groq">Groq Cloud API (Direct)</option>
                   <option value="openrouter">OpenRouter (Direct)</option>
@@ -262,6 +271,17 @@ export default function SettingsModal({ isOpen, onClose, currentSettings, onSave
                       placeholder="sk-or-..."
                       value={vaultKeys.openrouter}
                       onChange={(e) => handleKeyChange('openrouter', e.target.value)}
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">FreeLLMAPI Unified Key (Port 3001)</label>
+                    <input
+                      type="password"
+                      className="form-input"
+                      placeholder="freellmapi-..."
+                      value={vaultKeys.freellmapi || ''}
+                      onChange={(e) => handleKeyChange('freellmapi', e.target.value)}
                     />
                   </div>
                 </div>
