@@ -16,6 +16,7 @@ app.use(express.json());
 const DATA_DIR = path.join(__dirname, 'data');
 const NOTEBOOKS_DIR = path.join(DATA_DIR, 'notebooks');
 const KEYS_FILE = path.join(DATA_DIR, 'keys.json');
+const STATS_FILE = path.join(DATA_DIR, 'stats.json');
 
 // Ensure directories and files exist
 if (!fs.existsSync(DATA_DIR)) {
@@ -25,7 +26,22 @@ if (!fs.existsSync(NOTEBOOKS_DIR)) {
   fs.mkdirSync(NOTEBOOKS_DIR, { recursive: true });
 }
 if (!fs.existsSync(KEYS_FILE)) {
-  fs.writeFileSync(KEYS_FILE, JSON.stringify({ gemini: '', groq: '', openrouter: '', freellmapi: '' }, null, 2), 'utf8');
+  const defaultKeys = {
+    priority: ['gemini', 'groq', 'openrouter'],
+    keys: { gemini: '', groq: '', openrouter: '' }
+  };
+  fs.writeFileSync(KEYS_FILE, JSON.stringify(defaultKeys, null, 2), 'utf8');
+}
+if (!fs.existsSync(STATS_FILE)) {
+  const defaultStats = {
+    totalRequests: 0,
+    geminiRequests: 0,
+    groqRequests: 0,
+    openrouterRequests: 0,
+    fallbackRequests: 0,
+    lastRoutedVia: 'None'
+  };
+  fs.writeFileSync(STATS_FILE, JSON.stringify(defaultStats, null, 2), 'utf8');
 }
 
 // Helpers for paths
@@ -41,36 +57,83 @@ app.get('/api/keys', (req, res) => {
   try {
     if (fs.existsSync(KEYS_FILE)) {
       const keys = JSON.parse(fs.readFileSync(KEYS_FILE, 'utf8'));
-      // Return keys. For security, we can return masked versions or raw.
-      // Since it's fully local, raw is fine for user edits.
       res.json(keys);
     } else {
-      res.json({ gemini: '', groq: '', openrouter: '' });
+      res.json({
+        priority: ['gemini', 'groq', 'openrouter'],
+        keys: { gemini: '', groq: '', openrouter: '' }
+      });
     }
   } catch (error) {
     console.error('Error reading keys:', error);
-    res.status(500).json({ error: 'Failed to read keys' });
+    res.status(500).json({ error: 'Failed to read keys vault' });
   }
 });
 
 app.post('/api/keys', (req, res) => {
   try {
-    const { gemini, groq, openrouter, freellmapi } = req.body;
-    const keys = {
-      gemini: gemini || '',
-      groq: groq || '',
-      openrouter: openrouter || '',
-      freellmapi: freellmapi || ''
+    const { priority, keys } = req.body;
+    
+    // Validate inputs
+    const updatedVault = {
+      priority: priority || ['gemini', 'groq', 'openrouter'],
+      keys: {
+        gemini: (keys && keys.gemini) || '',
+        groq: (keys && keys.groq) || '',
+        openrouter: (keys && keys.openrouter) || ''
+      }
     };
-    fs.writeFileSync(KEYS_FILE, JSON.stringify(keys, null, 2), 'utf8');
-    res.json({ success: true, message: 'Keys updated successfully' });
+    
+    fs.writeFileSync(KEYS_FILE, JSON.stringify(updatedVault, null, 2), 'utf8');
+    res.json({ success: true, message: 'Keys vault updated successfully' });
   } catch (error) {
     console.error('Error saving keys:', error);
     res.status(500).json({ error: 'Failed to save keys' });
   }
 });
 
-// 2. Get all notebooks (metadata only)
+// 2. Stats/Analytics API
+app.get('/api/stats', (req, res) => {
+  try {
+    if (fs.existsSync(STATS_FILE)) {
+      const stats = JSON.parse(fs.readFileSync(STATS_FILE, 'utf8'));
+      res.json(stats);
+    } else {
+      res.json({
+        totalRequests: 0,
+        geminiRequests: 0,
+        groqRequests: 0,
+        openrouterRequests: 0,
+        fallbackRequests: 0,
+        lastRoutedVia: 'None'
+      });
+    }
+  } catch (error) {
+    console.error('Error loading stats:', error);
+    res.status(500).json({ error: 'Failed to load stats' });
+  }
+});
+
+// Reset stats
+app.post('/api/stats/reset', (req, res) => {
+  try {
+    const defaultStats = {
+      totalRequests: 0,
+      geminiRequests: 0,
+      groqRequests: 0,
+      openrouterRequests: 0,
+      fallbackRequests: 0,
+      lastRoutedVia: 'None'
+    };
+    fs.writeFileSync(STATS_FILE, JSON.stringify(defaultStats, null, 2), 'utf8');
+    res.json(defaultStats);
+  } catch (error) {
+    console.error('Error resetting stats:', error);
+    res.status(500).json({ error: 'Failed to reset stats' });
+  }
+});
+
+// 3. Get all notebooks (metadata only)
 app.get('/api/notebooks', (req, res) => {
   try {
     const notebooks = [];
@@ -96,7 +159,7 @@ app.get('/api/notebooks', (req, res) => {
   }
 });
 
-// 3. Create a new notebook
+// 4. Create a new notebook
 app.post('/api/notebooks', (req, res) => {
   try {
     const { name } = req.body;
@@ -125,7 +188,7 @@ app.post('/api/notebooks', (req, res) => {
   }
 });
 
-// 4. Rename a notebook
+// 5. Rename a notebook
 app.put('/api/notebooks/:id/rename', (req, res) => {
   try {
     const { id } = req.params;
@@ -151,7 +214,7 @@ app.put('/api/notebooks/:id/rename', (req, res) => {
   }
 });
 
-// 5. Get a specific notebook's data (meta, chat history, notes)
+// 6. Get a specific notebook's data (meta, chat history, notes)
 app.get('/api/notebooks/:id', (req, res) => {
   try {
     const { id } = req.params;
@@ -176,7 +239,7 @@ app.get('/api/notebooks/:id', (req, res) => {
   }
 });
 
-// 6. Delete a notebook
+// 7. Delete a notebook
 app.delete('/api/notebooks/:id', (req, res) => {
   try {
     const { id } = req.params;
@@ -194,7 +257,7 @@ app.delete('/api/notebooks/:id', (req, res) => {
   }
 });
 
-// 7. Manually save notes edits
+// 8. Manually save notes edits
 app.put('/api/notebooks/:id/notes', (req, res) => {
   try {
     const { id } = req.params;
@@ -213,7 +276,7 @@ app.put('/api/notebooks/:id/notes', (req, res) => {
   }
 });
 
-// 8. Chat API - Triggers LLM call, appends notes, saves chat history
+// 9. Chat API - Triggers LLM call, appends notes, saves chat history
 app.post('/api/notebooks/:id/chat', async (req, res) => {
   try {
     const { id } = req.params;

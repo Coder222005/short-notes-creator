@@ -2,21 +2,18 @@ const fs = require('fs');
 const path = require('path');
 
 const KEYS_FILE = path.join(__dirname, '..', 'data', 'keys.json');
+const STATS_FILE = path.join(__dirname, '..', 'data', 'stats.json');
 
-// Mappings for default model names if not specified
 const DEFAULT_MODELS = {
   gemini: 'gemini-1.5-flash',
   groq: 'llama-3.1-8b-instant',
-  openrouter: 'google/gemini-2.5-flash:free',
-  freellmapi: 'auto'
+  openrouter: 'google/gemini-2.5-flash:free'
 };
 
-// Endpoints for each provider
 const ENDPOINTS = {
   gemini: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
   groq: 'https://api.groq.com/openai/v1/chat/completions',
-  openrouter: 'https://openrouter.ai/api/v1/chat/completions',
-  freellmapi: 'http://localhost:3001/v1/chat/completions'
+  openrouter: 'https://openrouter.ai/api/v1/chat/completions'
 };
 
 /**
@@ -24,10 +21,13 @@ const ENDPOINTS = {
  */
 async function queryLLM({ provider, apiKey, model, messages, systemPrompt }) {
   // Read saved vault keys from file
-  let vaultKeys = { gemini: '', groq: '', openrouter: '', freellmapi: '' };
+  let vault = {
+    priority: ['gemini', 'groq', 'openrouter'],
+    keys: { gemini: '', groq: '', openrouter: '' }
+  };
   try {
     if (fs.existsSync(KEYS_FILE)) {
-      vaultKeys = JSON.parse(fs.readFileSync(KEYS_FILE, 'utf8'));
+      vault = JSON.parse(fs.readFileSync(KEYS_FILE, 'utf8'));
     }
   } catch (err) {
     console.error('Failed to read keys vault:', err);
@@ -44,24 +44,29 @@ async function queryLLM({ provider, apiKey, model, messages, systemPrompt }) {
     apiMessages.push({ role, content: msg.content });
   });
 
-  // Determine which providers to try
+  // Determine which providers to try and in what order
   let providersToTry = [];
   
   if (provider === 'auto') {
-    // Auto mode: try any provider that has a key configured in the vault
-    if (vaultKeys.gemini) providersToTry.push({ type: 'gemini', key: vaultKeys.gemini });
-    if (vaultKeys.groq) providersToTry.push({ type: 'groq', key: vaultKeys.groq });
-    if (vaultKeys.openrouter) providersToTry.push({ type: 'openrouter', key: vaultKeys.openrouter });
+    // Dynamic Rotation: iterate through keys in their PRIORITY order
+    const priorityOrder = vault.priority || ['gemini', 'groq', 'openrouter'];
+    priorityOrder.forEach((provName) => {
+      const key = vault.keys && vault.keys[provName];
+      if (key && key.trim() !== '') {
+        providersToTry.push({ type: provName, key });
+      }
+    });
   } else if (provider && provider !== 'fallback') {
     // Specific provider selected: use its vault key (or fallback to passed apiKey if any)
-    const key = vaultKeys[provider] || apiKey;
-    if (key) {
+    const key = (vault.keys && vault.keys[provider]) || apiKey;
+    if (key && key.trim() !== '') {
       providersToTry.push({ type: provider, key });
     }
   }
 
   // If no providers are configured or selected, fall back to offline mode
   if (providersToTry.length === 0) {
+    updateStats('fallback');
     return runFallbackProcessor(messages);
   }
 
@@ -76,15 +81,19 @@ async function queryLLM({ provider, apiKey, model, messages, systemPrompt }) {
         model: provider === 'auto' ? DEFAULT_MODELS[prov.type] : model,
         messages: apiMessages
       });
+      
+      // Update statistics
+      updateStats(prov.type);
       return response;
     } catch (err) {
-      console.warn(`Provider [${prov.type.toUpperCase()}] failed: ${err.message}. Retrying next in chain...`);
+      console.warn(`Provider [${prov.type.toUpperCase()}] failed: ${err.message}. Retrying next...`);
       lastError = err;
     }
   }
 
   // If all providers in the chain fail, drop back to local offline mode with a warning
   console.error('All LLM providers failed. Falling back to offline mode.');
+  updateStats('fallback');
   const fallbackResult = runFallbackProcessor(messages);
   return `⚠️ API Rotation Failed (${lastError ? lastError.message : 'No keys set'}). Falling back to offline summarizer.\n\n${fallbackResult}`;
 }
@@ -134,6 +143,38 @@ async function callProviderAPI({ provider, apiKey, model, messages }) {
   }
 
   return data.choices[0].message.content;
+}
+
+/**
+ * Increment usage statistics counters
+ */
+function updateStats(providerType) {
+  try {
+    let stats = {
+      totalRequests: 0,
+      geminiRequests: 0,
+      groqRequests: 0,
+      openrouterRequests: 0,
+      fallbackRequests: 0,
+      lastRoutedVia: 'None'
+    };
+
+    if (fs.existsSync(STATS_FILE)) {
+      stats = JSON.parse(fs.readFileSync(STATS_FILE, 'utf8'));
+    }
+
+    stats.totalRequests = (stats.totalRequests || 0) + 1;
+    stats.lastRoutedVia = providerType.toUpperCase();
+
+    if (providerType === 'gemini') stats.geminiRequests = (stats.geminiRequests || 0) + 1;
+    else if (providerType === 'groq') stats.groqRequests = (stats.groqRequests || 0) + 1;
+    else if (providerType === 'openrouter') stats.openrouterRequests = (stats.openrouterRequests || 0) + 1;
+    else if (providerType === 'fallback') stats.fallbackRequests = (stats.fallbackRequests || 0) + 1;
+
+    fs.writeFileSync(STATS_FILE, JSON.stringify(stats, null, 2), 'utf8');
+  } catch (err) {
+    console.error('Failed to update stats:', err);
+  }
 }
 
 /**
