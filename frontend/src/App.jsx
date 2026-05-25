@@ -14,6 +14,10 @@ export default function App() {
   const [activeId, setActiveId] = useState(null);
   const [activeNotebookData, setActiveNotebookData] = useState(null);
   const [chatMode, setChatMode] = useState('compile');
+  const [isNotesOpen, setIsNotesOpen] = useState(() => {
+    const saved = localStorage.getItem('study_notebook_notes_open');
+    return saved !== null ? JSON.parse(saved) : true;
+  });
   
   const [isLoadingNotebooks, setIsLoadingNotebooks] = useState(false);
   const [isLoadingChat, setIsLoadingChat] = useState(false);
@@ -302,15 +306,35 @@ export default function App() {
               {activeNotebook ? activeNotebook.name : "Study Hub"}
             </span>
           </div>
-          <button className="header-model-badge" onClick={() => setIsSettingsOpen(true)}>
-            <span style={{
-              width: '8px',
-              height: '8px',
-              borderRadius: '50%',
-              backgroundColor: settings.provider === 'fallback' ? '#f59e0b' : '#10b981'
-            }}></span>
-            {settings.provider === 'fallback' ? 'Offline Summarizer' : `${settings.provider.toUpperCase()} (${settings.model.split('/').pop()})`}
-          </button>
+          <div className="header-actions-group" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            {activeNotebook && (
+              <button 
+                className={`notes-toggle-btn ${isNotesOpen ? 'active' : ''}`}
+                onClick={() => {
+                  setIsNotesOpen(prev => {
+                    localStorage.setItem('study_notebook_notes_open', JSON.stringify(!prev));
+                    return !prev;
+                  });
+                }}
+                title={isNotesOpen ? "Hide Notes panel" : "Show Notes panel"}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ marginRight: '6px' }}>
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                </svg>
+                {isNotesOpen ? "Hide Notes" : "Show Notes"}
+              </button>
+            )}
+            <button className="header-model-badge" onClick={() => setIsSettingsOpen(true)}>
+              <span style={{
+                width: '8px',
+                height: '8px',
+                borderRadius: '50%',
+                backgroundColor: settings.provider === 'fallback' ? '#f59e0b' : '#10b981'
+              }}></span>
+              {settings.provider === 'fallback' ? 'Offline Summarizer' : `${settings.provider.toUpperCase()} (${settings.model.split('/').pop()})`}
+            </button>
+          </div>
         </header>
 
         <Workspace
@@ -328,6 +352,7 @@ export default function App() {
           llmConfig={settings}
           onImportSuccess={handleImportSuccess}
           onAcceptNotes={handleAcceptNotes}
+          isNotesOpen={isNotesOpen}
         />
       </main>
 

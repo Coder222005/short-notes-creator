@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import ChatPanel from './ChatPanel';
 import NotesPanel from './NotesPanel';
 
@@ -16,8 +16,51 @@ export default function Workspace({
   isLoadingNotes,
   llmConfig,
   onImportSuccess,
-  onAcceptNotes
+  onAcceptNotes,
+  isNotesOpen
 }) {
+  const [notesWidth, setNotesWidth] = useState(40); // width in percentage
+  const workspaceRef = useRef(null);
+  const isDragging = useRef(false);
+
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (!isDragging.current || !workspaceRef.current) return;
+      
+      const workspaceRect = workspaceRef.current.getBoundingClientRect();
+      const workspaceWidth = workspaceRect.width;
+      
+      // Calculate position relative to workspace right edge
+      const relativeX = workspaceRect.right - e.clientX;
+      let newWidthPct = (relativeX / workspaceWidth) * 100;
+      
+      // Enforce bounds: min 25%, max 70%
+      if (newWidthPct < 25) newWidthPct = 25;
+      if (newWidthPct > 70) newWidthPct = 70;
+      
+      setNotesWidth(newWidthPct);
+    };
+
+    const handleMouseUp = () => {
+      isDragging.current = false;
+      document.body.classList.remove('dragging-active');
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, []);
+
+  const handleMouseDown = (e) => {
+    e.preventDefault();
+    isDragging.current = true;
+    document.body.classList.add('dragging-active');
+  };
+
   if (!activeNotebook) {
     return (
       <div className="main-content" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -41,27 +84,44 @@ export default function Workspace({
   }
 
   return (
-    <div className="workspace">
-      <ChatPanel
-        chatCompile={chatCompile}
-        chatStudy={chatStudy}
-        chatMode={chatMode}
-        setChatMode={setChatMode}
-        onClearChat={onClearChat}
-        onSendMessage={onSendMessage}
-        isLoading={isLoadingChat}
-        notebookName={activeNotebook.name}
-        notebookId={activeNotebook.id}
-        llmConfig={llmConfig}
-        onImportSuccess={onImportSuccess}
-        onAcceptNotes={onAcceptNotes}
-      />
-      <NotesPanel
-        notesContent={notesContent}
-        onSaveNotes={onSaveNotes}
-        notebookName={activeNotebook.name}
-        isLoadingNotes={isLoadingNotes}
-      />
+    <div className="workspace" ref={workspaceRef}>
+      <div className="workspace-chat-container" style={{ flex: 1, minWidth: 0, height: '100%' }}>
+        <ChatPanel
+          chatCompile={chatCompile}
+          chatStudy={chatStudy}
+          chatMode={chatMode}
+          setChatMode={setChatMode}
+          onClearChat={onClearChat}
+          onSendMessage={onSendMessage}
+          isLoading={isLoadingChat}
+          notebookName={activeNotebook.name}
+          notebookId={activeNotebook.id}
+          llmConfig={llmConfig}
+          onImportSuccess={onImportSuccess}
+          onAcceptNotes={onAcceptNotes}
+        />
+      </div>
+
+      {isNotesOpen && (
+        <>
+          <div 
+            className="workspace-divider" 
+            onMouseDown={handleMouseDown} 
+            title="Drag to resize panels"
+          />
+          <div 
+            className="workspace-notes-container" 
+            style={{ width: `${notesWidth}%`, flexShrink: 0, minWidth: '250px', height: '100%' }}
+          >
+            <NotesPanel
+              notesContent={notesContent}
+              onSaveNotes={onSaveNotes}
+              notebookName={activeNotebook.name}
+              isLoadingNotes={isLoadingNotes}
+            />
+          </div>
+        </>
+      )}
     </div>
   );
 }
