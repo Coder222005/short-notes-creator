@@ -13,6 +13,7 @@ export default function App() {
   const [notebooks, setNotebooks] = useState([]);
   const [activeId, setActiveId] = useState(null);
   const [activeNotebookData, setActiveNotebookData] = useState(null);
+  const [chatMode, setChatMode] = useState('compile');
   
   const [isLoadingNotebooks, setIsLoadingNotebooks] = useState(false);
   const [isLoadingChat, setIsLoadingChat] = useState(false);
@@ -145,13 +146,17 @@ export default function App() {
       id: `msg_temp_${Date.now()}`,
       role: 'user',
       content: message,
+      mode: chatMode,
       timestamp: new Date().toISOString()
     };
     
-    setActiveNotebookData(prev => ({
-      ...prev,
-      chat: [...(prev.chat || []), tempUserMsg]
-    }));
+    setActiveNotebookData(prev => {
+      const field = chatMode === 'study' ? 'chatStudy' : 'chatCompile';
+      return {
+        ...prev,
+        [field]: [...(prev[field] || []), tempUserMsg]
+      };
+    });
 
     try {
       const res = await fetch(`${API_BASE}/notebooks/${activeId}/chat`, {
@@ -159,17 +164,19 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message,
-          llmConfig: settings
+          llmConfig: settings,
+          mode: chatMode
         })
       });
 
       if (res.ok) {
         const data = await res.json();
-        // Set actual server-side synced chat and notes
+        // Set actual server-side synced chats and notes
         setActiveNotebookData(prev => ({
           ...prev,
-          chat: data.chatHistory,
-          notes: data.updatedNotes
+          chatCompile: data.chatCompile,
+          chatStudy: data.chatStudy,
+          notes: data.updatedNotes !== undefined ? data.updatedNotes : prev.notes
         }));
       } else {
         const err = await res.json();
@@ -177,7 +184,6 @@ export default function App() {
       }
     } catch (e) {
       console.error('Error sending message:', e);
-      // Remove optimistic message and show alert, or add error indicator
       alert(`Error: ${e.message}`);
       // Reload notebook to restore correct state
       handleSelectNotebook(activeId);
@@ -219,7 +225,8 @@ export default function App() {
         const data = await res.json();
         setActiveNotebookData(prev => ({
           ...prev,
-          chat: data.chatHistory,
+          chatCompile: data.chatCompile,
+          chatStudy: data.chatStudy,
           notes: data.updatedNotes
         }));
       } else {
@@ -232,6 +239,31 @@ export default function App() {
     }
   };
 
+  // Clear active chat stream
+  const handleClearChat = async () => {
+    if (!activeId) return;
+    const modeLabel = chatMode === 'study' ? 'Study & Quiz' : 'Compile Notes';
+    if (!confirm(`Are you sure you want to clear the ${modeLabel} chat history? Your compiled notes will be kept.`)) return;
+
+    try {
+      const res = await fetch(`${API_BASE}/notebooks/${activeId}/clear-chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: chatMode })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setActiveNotebookData(prev => ({
+          ...prev,
+          chatCompile: data.chatCompile,
+          chatStudy: data.chatStudy
+        }));
+      }
+    } catch (e) {
+      console.error('Error clearing chat history:', e);
+    }
+  };
+
   // Save settings
   const handleSaveSettings = (newSettings) => {
     setSettings(newSettings);
@@ -241,7 +273,8 @@ export default function App() {
   const handleImportSuccess = (data) => {
     setActiveNotebookData(prev => ({
       ...prev,
-      chat: data.chatHistory,
+      chatCompile: data.chatCompile,
+      chatStudy: data.chatStudy,
       notes: data.updatedNotes
     }));
   };
@@ -282,7 +315,11 @@ export default function App() {
 
         <Workspace
           activeNotebook={activeNotebook}
-          chatHistory={activeNotebookData ? activeNotebookData.chat : []}
+          chatCompile={activeNotebookData ? activeNotebookData.chatCompile : []}
+          chatStudy={activeNotebookData ? activeNotebookData.chatStudy : []}
+          chatMode={chatMode}
+          setChatMode={setChatMode}
+          onClearChat={handleClearChat}
           notesContent={activeNotebookData ? activeNotebookData.notes : ''}
           onSendMessage={handleSendMessage}
           onSaveNotes={handleSaveNotes}

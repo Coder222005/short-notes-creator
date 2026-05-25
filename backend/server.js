@@ -29,7 +29,10 @@ if (!fs.existsSync(NOTEBOOKS_DIR)) {
 // Helpers for paths
 const getNotebookPath = (id) => path.join(NOTEBOOKS_DIR, id);
 const getMetaPath = (id) => path.join(getNotebookPath(id), 'meta.json');
-const getChatPath = (id) => path.join(getNotebookPath(id), 'chat.json');
+const getChatPath = (id, mode = 'compile') => {
+  const filename = mode === 'study' ? 'chat_study.json' : 'chat_compile.json';
+  return path.join(getNotebookPath(id), filename);
+};
 const getNotesPath = (id) => path.join(getNotebookPath(id), 'notes.md');
 
 function ensureSampleNotebook() {
@@ -57,6 +60,7 @@ function ensureSampleNotebook() {
           id: 'msg_sample_u1',
           role: 'user',
           content: 'Photosynthesis is how plants make food using sunlight. It takes place in chloroplasts, specifically using chlorophyll to absorb light. The first stage is the light-dependent reactions where water is split to release oxygen.',
+          mode: 'compile',
           timestamp: new Date(Date.now() - 120000).toISOString()
         },
         {
@@ -65,12 +69,14 @@ function ensureSampleNotebook() {
           content: 'That is a perfect summary of the initial stage of photosynthesis! I have extracted these points as study notes for your revision. You can review them in the proposed notes block below.',
           notesDraft: '### 📝 Core Concepts: Light Reactions\n* **Photosynthesis** is the process used by plants to convert light energy into chemical energy (glucose).\n* **Chloroplasts** are the organelles where photosynthesis occurs, containing the pigment chlorophyll.\n* **Light-dependent reactions** occur in the thylakoid membranes, splitting water molecules ($H_2O$) to release oxygen ($O_2$) and produce ATP/NADPH.',
           notesAdded: true,
+          mode: 'compile',
           timestamp: new Date(Date.now() - 90000).toISOString()
         },
         {
           id: 'msg_sample_u2',
           role: 'user',
           content: 'What about the second stage? I think it is called the Calvin cycle or light-independent reactions. Tell me about it so I can add it to my notes.',
+          mode: 'compile',
           timestamp: new Date(Date.now() - 60000).toISOString()
         },
         {
@@ -79,13 +85,15 @@ function ensureSampleNotebook() {
           content: 'Exactly! The second stage is the **Calvin Cycle** (or light-independent reactions). It occurs in the stroma of the chloroplast and uses carbon dioxide along with ATP and NADPH from the light reactions to synthesize glucose.\n\nReview the proposed points below and click **"Add to Notes"** to merge them into your compiler!',
           notesDraft: '### 🔄 The Calvin Cycle (Light-Independent Reactions)\n* Occurs in the **stroma** of the chloroplast.\n* Uses carbon dioxide ($CO_2$) and chemical energy (ATP and NADPH) to synthesize **glucose**.\n* Does not require direct sunlight but relies on products of the light-dependent stage.',
           notesAdded: false,
+          mode: 'compile',
           timestamp: new Date(Date.now() - 30000).toISOString()
         }
       ];
 
       fs.writeFileSync(getMetaPath(sampleId), JSON.stringify(meta, null, 2), 'utf8');
       fs.writeFileSync(getNotesPath(sampleId), notes, 'utf8');
-      fs.writeFileSync(getChatPath(sampleId), JSON.stringify(chat, null, 2), 'utf8');
+      fs.writeFileSync(getChatPath(sampleId, 'compile'), JSON.stringify(chat, null, 2), 'utf8');
+      fs.writeFileSync(getChatPath(sampleId, 'study'), JSON.stringify([], null, 2), 'utf8');
       console.log('Sample Study Notebook seeded successfully.');
     }
   } catch (error) {
@@ -202,7 +210,8 @@ app.post('/api/notebooks', (req, res) => {
     };
 
     fs.writeFileSync(getMetaPath(id), JSON.stringify(meta, null, 2), 'utf8');
-    fs.writeFileSync(getChatPath(id), JSON.stringify([], null, 2), 'utf8');
+    fs.writeFileSync(getChatPath(id, 'compile'), JSON.stringify([], null, 2), 'utf8');
+    fs.writeFileSync(getChatPath(id, 'study'), JSON.stringify([], null, 2), 'utf8');
     fs.writeFileSync(getNotesPath(id), '# ' + name.trim() + '\n\nWelcome to your study notebook! Paste study materials in the chat to extract important notes here.\n\n', 'utf8');
 
     res.status(201).json(meta);
@@ -249,12 +258,21 @@ app.get('/api/notebooks/:id', (req, res) => {
     }
 
     const meta = JSON.parse(fs.readFileSync(getMetaPath(id), 'utf8'));
-    const chat = JSON.parse(fs.readFileSync(getChatPath(id), 'utf8'));
+    
+    const chatCompileFile = getChatPath(id, 'compile');
+    const chatStudyFile = getChatPath(id, 'study');
+    
+    if (!fs.existsSync(chatCompileFile)) fs.writeFileSync(chatCompileFile, JSON.stringify([], null, 2), 'utf8');
+    if (!fs.existsSync(chatStudyFile)) fs.writeFileSync(chatStudyFile, JSON.stringify([], null, 2), 'utf8');
+
+    const chatCompile = JSON.parse(fs.readFileSync(chatCompileFile, 'utf8'));
+    const chatStudy = JSON.parse(fs.readFileSync(chatStudyFile, 'utf8'));
     const notes = fs.readFileSync(getNotesPath(id), 'utf8');
 
     res.json({
       meta,
-      chat,
+      chatCompile,
+      chatStudy,
       notes,
     });
   } catch (error) {
@@ -300,11 +318,12 @@ app.put('/api/notebooks/:id/notes', (req, res) => {
   }
 });
 
+
 // Chat API
 app.post('/api/notebooks/:id/chat', async (req, res) => {
   try {
     const { id } = req.params;
-    const { message, llmConfig } = req.body;
+    const { message, llmConfig, mode = 'compile' } = req.body;
 
     if (!message || message.trim() === '') {
       return res.status(400).json({ error: 'Message is required' });
@@ -315,8 +334,12 @@ app.post('/api/notebooks/:id/chat', async (req, res) => {
       return res.status(404).json({ error: 'Notebook not found' });
     }
 
-    const chatFile = getChatPath(id);
+    const chatFile = getChatPath(id, mode);
     const notesFile = getNotesPath(id);
+
+    if (!fs.existsSync(chatFile)) {
+      fs.writeFileSync(chatFile, JSON.stringify([], null, 2), 'utf8');
+    }
 
     let chatHistory = JSON.parse(fs.readFileSync(chatFile, 'utf8'));
 
@@ -324,6 +347,7 @@ app.post('/api/notebooks/:id/chat', async (req, res) => {
       id: `msg_${Date.now()}_u`,
       role: 'user',
       content: message,
+      mode: mode,
       timestamp: new Date().toISOString(),
     };
     chatHistory.push(userMessage);
@@ -335,6 +359,7 @@ app.post('/api/notebooks/:id/chat', async (req, res) => {
       chatHistory,
       currentNotes,
       llmConfig,
+      mode
     });
 
     const assistantMessage = {
@@ -343,21 +368,54 @@ app.post('/api/notebooks/:id/chat', async (req, res) => {
       content: reply,
       notesDraft: notesToAppend || '',
       notesAdded: false,
+      mode: mode,
       timestamp: new Date().toISOString(),
     };
     chatHistory.push(assistantMessage);
 
     fs.writeFileSync(chatFile, JSON.stringify(chatHistory, null, 2), 'utf8');
 
+    const chatCompile = JSON.parse(fs.readFileSync(getChatPath(id, 'compile'), 'utf8'));
+    const chatStudy = JSON.parse(fs.readFileSync(getChatPath(id, 'study'), 'utf8'));
+
     res.json({
       reply,
       notesDraft: notesToAppend || '',
       notesAdded: false,
-      chatHistory,
+      chatCompile,
+      chatStudy,
     });
   } catch (error) {
     console.error('Error in chat processing:', error);
     res.status(500).json({ error: error.message || 'Failed to process chat request' });
+  }
+});
+
+// Clear Chat API
+app.post('/api/notebooks/:id/clear-chat', (req, res) => {
+  try {
+    const { id } = req.params;
+    const { mode = 'compile' } = req.body;
+
+    const notebookFolder = getNotebookPath(id);
+    if (!fs.existsSync(notebookFolder)) {
+      return res.status(404).json({ error: 'Notebook not found' });
+    }
+
+    const chatFile = getChatPath(id, mode);
+    fs.writeFileSync(chatFile, JSON.stringify([], null, 2), 'utf8');
+
+    const chatCompile = JSON.parse(fs.readFileSync(getChatPath(id, 'compile'), 'utf8'));
+    const chatStudy = JSON.parse(fs.readFileSync(getChatPath(id, 'study'), 'utf8'));
+
+    res.json({
+      success: true,
+      chatCompile,
+      chatStudy,
+    });
+  } catch (error) {
+    console.error('Error clearing chat history:', error);
+    res.status(500).json({ error: 'Failed to clear chat history' });
   }
 });
 
@@ -372,7 +430,7 @@ app.post('/api/notebooks/:id/accept-notes', (req, res) => {
       return res.status(404).json({ error: 'Notebook not found' });
     }
 
-    const chatFile = getChatPath(id);
+    const chatFile = getChatPath(id, 'compile');
     const notesFile = getNotesPath(id);
 
     if (!fs.existsSync(chatFile) || !fs.existsSync(notesFile)) {
@@ -405,16 +463,23 @@ app.post('/api/notebooks/:id/accept-notes', (req, res) => {
 
     fs.writeFileSync(chatFile, JSON.stringify(chatHistory, null, 2), 'utf8');
 
+    const chatCompile = chatHistory;
+    const chatStudyFile = getChatPath(id, 'study');
+    if (!fs.existsSync(chatStudyFile)) fs.writeFileSync(chatStudyFile, JSON.stringify([], null, 2), 'utf8');
+    const chatStudy = JSON.parse(fs.readFileSync(chatStudyFile, 'utf8'));
+
     res.json({
       success: true,
       updatedNotes,
-      chatHistory
+      chatCompile,
+      chatStudy,
     });
   } catch (error) {
     console.error('Error accepting notes draft:', error);
     res.status(500).json({ error: error.message || 'Failed to accept notes draft' });
   }
 });
+
 
 // ChatGPT JSON Export Parser
 function parseChatGPTExport(json) {
@@ -566,7 +631,7 @@ app.post('/api/notebooks/:id/import-chat', async (req, res) => {
       return res.status(400).json({ error: 'No valid messages found in the input.' });
     }
 
-    const chatFile = getChatPath(id);
+    const chatFile = getChatPath(id, 'compile');
     const notesFile = getNotesPath(id);
 
     let chatHistory = JSON.parse(fs.readFileSync(chatFile, 'utf8'));
@@ -576,6 +641,7 @@ app.post('/api/notebooks/:id/import-chat', async (req, res) => {
       id: `msg_imported_${Date.now()}_${idx}`,
       role: m.role,
       content: m.content,
+      mode: 'compile',
       timestamp: m.timestamp || new Date().toISOString()
     }));
 
@@ -594,7 +660,8 @@ app.post('/api/notebooks/:id/import-chat', async (req, res) => {
           message: 'Process this segment of imported chat log and extract key points.',
           chatHistory: chunk,
           currentNotes: updatedNotes,
-          llmConfig
+          llmConfig,
+          mode: 'compile'
         });
 
         if (notesToAppend && notesToAppend.trim() !== '') {
@@ -611,12 +678,17 @@ app.post('/api/notebooks/:id/import-chat', async (req, res) => {
     fs.writeFileSync(chatFile, JSON.stringify(chatHistory, null, 2), 'utf8');
     fs.writeFileSync(notesFile, updatedNotes, 'utf8');
 
+    const chatStudyFile = getChatPath(id, 'study');
+    if (!fs.existsSync(chatStudyFile)) fs.writeFileSync(chatStudyFile, JSON.stringify([], null, 2), 'utf8');
+    const chatStudy = JSON.parse(fs.readFileSync(chatStudyFile, 'utf8'));
+
     res.json({
       success: true,
       importedCount: stampedMessages.length,
       appendedNotes: newAppendedNotes,
       updatedNotes,
-      chatHistory
+      chatCompile: chatHistory,
+      chatStudy,
     });
 
   } catch (error) {

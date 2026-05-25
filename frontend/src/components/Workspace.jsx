@@ -4,7 +4,11 @@ import NotesPanel from './NotesPanel';
 
 export default function Workspace({
   activeNotebook,
-  chatHistory,
+  chatCompile,
+  chatStudy,
+  chatMode,
+  setChatMode,
+  onClearChat,
   notesContent,
   onSendMessage,
   onSaveNotes,
@@ -39,7 +43,11 @@ export default function Workspace({
   return (
     <div className="workspace">
       <ChatPanel
-        chatHistory={chatHistory}
+        chatCompile={chatCompile}
+        chatStudy={chatStudy}
+        chatMode={chatMode}
+        setChatMode={setChatMode}
+        onClearChat={onClearChat}
         onSendMessage={onSendMessage}
         isLoading={isLoadingChat}
         notebookName={activeNotebook.name}

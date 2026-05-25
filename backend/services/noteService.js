@@ -2,44 +2,99 @@ const { queryLLM } = require('./llmService');
 
 /**
  * Note Service
- * Manages notes extraction prompt engineering and response parsing.
+ * Manages notes extraction, tutoring prompts, sliding windows, and interactive quiz formatting.
  */
-async function processAndAppendNotes({ message, chatHistory, currentNotes, llmConfig }) {
-  const systemPrompt = `You are a premium, highly effective Study Assistant. Your goal is to help the user study and build a comprehensive, structured study notebook.
+async function processAndAppendNotes({ message, chatHistory, currentNotes, llmConfig, mode = 'compile' }) {
+  let systemPrompt = '';
+  let activeHistory = [];
 
-When the user sends study materials, notes, or questions, you must:
-1. Review the input.
-2. Provide a conversational, encouraging explanation, answer questions, or ask a clarifying question in the "chat_response".
-3. Extract key structured notes (definitions, main concepts, bullet points, formula lists, or summaries) in the "extracted_notes" field. The notes should be written in clean Markdown.
+  if (mode === 'compile') {
+    // 1. Filter out messages before the last accepted notes draft
+    let filteredHistory = [...chatHistory];
+    const lastAcceptedIndex = [...chatHistory].reverse().findIndex(
+      m => m.role === 'assistant' && m.notesAdded === true
+    );
+    
+    if (lastAcceptedIndex !== -1) {
+      // Convert reverse index back to standard index
+      const actualIndex = chatHistory.length - 1 - lastAcceptedIndex;
+      filteredHistory = chatHistory.slice(actualIndex + 1);
+    }
 
-You MUST respond in this exact JSON format:
-{
-  "chat_response": "Your conversational explanation, answers, and study support. Keep it engaging, clear, and educational.",
-  "extracted_notes": "The structured notes you extracted to append to the notebook. Use Markdown headers (h3 or h4, since h1/h2 are used for titles), lists, bold words, and blockquotes. Only include actual notes here, not conversational text. If no new important facts were introduced, leave this as an empty string."
-}
+    // 2. Sliding window of last 4 messages (2 user turns)
+    activeHistory = filteredHistory.slice(-4);
 
-Important Rules:
-- Do NOT output any conversational text outside the JSON object.
-- Make sure "extracted_notes" is written as clean, renderable Markdown.
-- To avoid duplicating existing notes, review the current notes context:
+    systemPrompt = `You are a premium, highly effective Study Assistant. Your goal is to help the user build a structured study notebook.
+
+Review the current notes content to avoid duplication or know where to add:
 --- CURRENT NOTEBOOK NOTES ---
 ${currentNotes}
 ------------------------------
-Only extract NEW information or provide a more detailed structure for existing items, avoiding exact duplicates.`;
+
+The user is in NOTE-TAKING mode. They will feed study materials, details, or instruct you to modify/add/reorganize specific points in their notes (e.g. "add this point", "format this list", "modify this concept").
+
+Your job:
+1. Review their input/instruction.
+2. Update or compile the new notes in the "extracted_notes" field in clean Markdown.
+3. If they give an instruction to modify/add/delete a point, write the exact markdown block of the new or edited section in "extracted_notes".
+4. In "chat_response", provide a very brief, 1-2 sentence confirmation of what notes were generated/updated (e.g., "Added photosynthesis formula under light reactions."). Do NOT write long explanations, doubts, or tutoring text. Keep it strictly focused on the compilation status. Do NOT ask clarifying questions or engage in casual conversation.
+
+You MUST respond in this exact JSON format:
+{
+  "chat_response": "A brief, 1-sentence confirmation of the notes update.",
+  "extracted_notes": "The structured markdown notes to be appended or modified."
+}`;
+  } else {
+    // mode === 'study'
+    // 1. Sliding window of last 2 messages (1 user turn)
+    activeHistory = chatHistory.slice(-2);
+
+    systemPrompt = `You are a premium, highly effective Study Assistant. Your goal is to help the user study and test their knowledge of the compiled study notes.
+
+Review the notes content:
+--- CURRENT NOTEBOOK NOTES ---
+${currentNotes}
+------------------------------
+
+Your job:
+1. Answer the user's questions, clear their doubts, or test/quiz them based ONLY or PRIMARILY on the compiled notes.
+2. Keep it engaging, educational, and clear.
+3. Do NOT extract any new study notes. The "extracted_notes" field in your response must be an empty string.
+4. If the user asks for a quiz, test, or to check their knowledge, you must generate a multiple-choice quiz. Write the quiz questions inside a markdown code block tagged with "quiz", containing a JSON object in this exact format:
+\`\`\`quiz
+{
+  "questions": [
+    {
+      "question": "The question text?",
+      "options": ["Option A", "Option B", "Option C", "Option D"],
+      "answerIndex": 0,
+      "solution": "Detailed explanation of why this answer is correct and why other options are incorrect.",
+      "concept": "The core concept being tested (e.g., Calvin Cycle, Light Reactions)"
+    }
+  ]
+}
+\`\`\`
+Ensure the options array contains 2 to 4 options, and answerIndex is the 0-indexed position of the correct answer. Provide 1 to 5 questions in the quiz. Do NOT put other texts inside the \`\`\`quiz block, only the valid JSON.
+
+You MUST respond in this exact JSON format:
+{
+  "chat_response": "Your tutoring explanation, answer, or quiz intro here. Feel free to explain concepts or review the user's answers.",
+  "extracted_notes": ""
+}`;
+  }
 
   try {
     const rawResponse = await queryLLM({
       provider: llmConfig.provider,
       apiKey: llmConfig.apiKey,
       model: llmConfig.model,
-      messages: chatHistory,
+      messages: activeHistory,
       systemPrompt: systemPrompt
     });
 
     // Parse the JSON response resiliently
     let parsed;
     try {
-      // Find JSON block if LLM wrapped it in markdown code fences
       let jsonText = rawResponse.trim();
       const jsonRegex = /```(?:json)?\s*([\s\S]*?)\s*```/i;
       const match = jsonText.match(jsonRegex);
@@ -51,17 +106,13 @@ Only extract NEW information or provide a more detailed structure for existing i
     } catch (parseError) {
       console.warn("Failed to parse LLM response as JSON. Raw response was:", rawResponse);
       
-      // Resilient fallback parser:
-      // If LLM returned raw text, let's treat the entire thing as the chat response,
-      // and look for any markdown sections to split or just keep extracted_notes empty.
       parsed = {
         chat_response: rawResponse,
         extracted_notes: ""
       };
 
-      // Heuristic: If there are markdown lists/headers in the text, let's copy them to notes
-      if (rawResponse.includes('###') || rawResponse.includes('* ') || rawResponse.includes('- ')) {
-        // Find the first occurrence of a header or list and extract it
+      // Heuristic: If compile mode and there are markdown lists/headers in the text, extract it
+      if (mode === 'compile' && (rawResponse.includes('###') || rawResponse.includes('* ') || rawResponse.includes('- '))) {
         const firstHeaderIdx = rawResponse.indexOf('###');
         if (firstHeaderIdx !== -1) {
           parsed.chat_response = rawResponse.substring(0, firstHeaderIdx).trim();
