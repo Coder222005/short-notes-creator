@@ -60,7 +60,7 @@ Your job:
 1. Answer the user's questions, clear their doubts, or test/quiz them based ONLY or PRIMARILY on the compiled notes.
 2. Keep it engaging, educational, and clear.
 3. Do NOT extract any new study notes. The "extracted_notes" field in your response must be an empty string.
-4. If the user asks for a quiz, test, or to check their knowledge, you must generate a multiple-choice quiz. Write the quiz questions inside a markdown code block tagged with "quiz", containing a JSON object in this exact format:
+4. If the user asks for a quiz, test, or to check their knowledge, you must generate a multiple-choice quiz IMMEDIATELY in this response. Do NOT ask for permission, do NOT say "I will create a quiz", and do NOT wait. You must output the quiz questions block inside the "chat_response" field as a markdown code block tagged with "quiz", containing a JSON object in this exact format:
 \`\`\`quiz
 {
   "questions": [
@@ -78,7 +78,7 @@ Ensure the options array contains 2 to 4 options, and answerIndex is the 0-index
 
 You MUST respond in this exact JSON format:
 {
-  "chat_response": "Your tutoring explanation, answer, or quiz intro here. Feel free to explain concepts or review the user's answers.",
+  "chat_response": "Your tutoring explanation, answer, or quiz intro here, followed directly by the \`\`\`quiz code block. Feel free to explain concepts or review the user's answers.",
   "extracted_notes": ""
 }`;
   }
