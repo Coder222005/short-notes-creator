@@ -96,10 +96,12 @@ You MUST respond in this exact JSON format:
     let parsed;
     try {
       let jsonText = rawResponse.trim();
-      const jsonRegex = /```(?:json)?\s*([\s\S]*?)\s*```/i;
-      const match = jsonText.match(jsonRegex);
-      if (match) {
-        jsonText = match[1];
+      if (jsonText.startsWith('```')) {
+        const firstLineEnd = jsonText.indexOf('\n');
+        const lastFenceIdx = jsonText.lastIndexOf('```');
+        if (firstLineEnd !== -1 && lastFenceIdx > firstLineEnd) {
+          jsonText = jsonText.substring(firstLineEnd, lastFenceIdx).trim();
+        }
       }
       
       parsed = JSON.parse(jsonText);

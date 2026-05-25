@@ -51,10 +51,16 @@ export default function Sidebar({
     <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
       <div className="sidebar-header">
         <div className="brand">
-          {/* Warm book/notebook icon */}
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: isCollapsed ? 0 : '8px', flexShrink: 0, color: 'var(--accent-color)' }}>
-            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+          {/* Gemini sparkle brand icon */}
+          <svg width="18" height="18" viewBox="0 0 24 24" style={{ marginRight: isCollapsed ? 0 : '8px', flexShrink: 0 }}>
+            <defs>
+              <linearGradient id="brandGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#4285f4" />
+                <stop offset="50%" stopColor="#9b72cb" />
+                <stop offset="100%" stopColor="#d96570" />
+              </linearGradient>
+            </defs>
+            <path fill="url(#brandGrad)" d="M12 24c-.2 0-.4-.1-.5-.3C10 18.2 5.8 14 0 12.5v-1C5.8 10 10 5.8 11.5.3c.1-.2.3-.3.5-.3s.4.1.5.3C14 5.8 18.2 10 24 11.5v1C18.2 14 14 18.2 12.5 23.7c-.1.2-.3.3-.5.3z" />
           </svg>
           {!isCollapsed && <span>StudyNotebook</span>}
         </div>

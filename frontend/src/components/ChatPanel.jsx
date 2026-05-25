@@ -335,9 +335,15 @@ export default function ChatPanel({
               <div key={msg.id} className={`message-wrapper ${msg.role}`}>
                 {msg.role === 'assistant' && (
                   <div className="message-avatar assistant">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M12 20h9" />
-                      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="url(#geminiGrad)">
+                      <defs>
+                        <linearGradient id="geminiGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                          <stop offset="0%" stopColor="#4285f4" />
+                          <stop offset="50%" stopColor="#9b72cb" />
+                          <stop offset="100%" stopColor="#d96570" />
+                        </linearGradient>
+                      </defs>
+                      <path d="M12 24c-.2 0-.4-.1-.5-.3C10 18.2 5.8 14 0 12.5v-1C5.8 10 10 5.8 11.5.3c.1-.2.3-.3.5-.3s.4.1.5.3C14 5.8 18.2 10 24 11.5v1C18.2 14 14 18.2 12.5 23.7c-.1.2-.3.3-.5.3z" />
                     </svg>
                   </div>
                 )}
@@ -346,37 +352,37 @@ export default function ChatPanel({
                     {textBeforeQuiz && <MarkdownRenderer text={textBeforeQuiz} />}
                     {quizData && <InteractiveQuiz quizData={quizData} />}
                     
-                    {msg.notesDraft && msg.notesDraft.trim() !== '' && chatMode === 'compile' && (
-                      <div style={{
-                        marginTop: '12px',
-                        padding: '12px',
-                        borderRadius: '8px',
-                        border: '1px solid var(--border-color)',
-                        backgroundColor: 'var(--accent-color-subtle)',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '8px'
-                      }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '6px', fontSize: '0.8rem', color: 'var(--accent-color)', fontWeight: 600 }}>
-                          <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span>📝</span> Proposed Study Notes
+                    {msg.notesDraft && msg.notesDraft.trim() !== '' && (
+                      <div className="artifact-card">
+                        <div className="artifact-card-header">
+                          <span className="artifact-card-title">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                              <polyline points="14 2 14 8 20 8" />
+                              <line x1="16" y1="13" x2="8" y2="13" />
+                              <line x1="16" y1="17" x2="8" y2="17" />
+                            </svg>
+                            Proposed Study Notes
                           </span>
                           {msg.notesAdded ? (
-                            <span style={{ color: 'var(--quiz-correct)', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
-                              ✓ Added to Notes
+                            <span className="artifact-added-badge">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="20 6 9 17 4 12" />
+                              </svg>
+                              Added to Notes
                             </span>
                           ) : (
                             <button
                               type="button"
                               onClick={() => onAcceptNotes(msg.id, msg.notesDraft)}
                               className="btn btn-primary"
-                              style={{ padding: '4px 10px', fontSize: '0.75rem', borderRadius: '4px' }}
+                              style={{ padding: '5px 14px', fontSize: '0.78rem', borderRadius: '8px' }}
                             >
                               ✓ Add to Notes
                             </button>
                           )}
                         </div>
-                        <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                        <div className="artifact-card-body">
                           <MarkdownRenderer text={msg.notesDraft} />
                         </div>
                       </div>
@@ -390,9 +396,8 @@ export default function ChatPanel({
           {isLoading && (
             <div className="message-wrapper assistant">
               <div className="message-avatar assistant">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 20h9" />
-                  <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="url(#geminiGrad)">
+                  <path d="M12 24c-.2 0-.4-.1-.5-.3C10 18.2 5.8 14 0 12.5v-1C5.8 10 10 5.8 11.5.3c.1-.2.3-.3.5-.3s.4.1.5.3C14 5.8 18.2 10 24 11.5v1C18.2 14 14 18.2 12.5 23.7c-.1.2-.3.3-.5.3z" />
                 </svg>
               </div>
               <div className="message-bubble">
@@ -444,8 +449,8 @@ export default function ChatPanel({
                 title="Send"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="12" y1="19" x2="12" y2="5" />
-                  <polyline points="5 12 12 5 19 12" />
+                  <line x1="22" y1="2" x2="11" y2="13" />
+                  <polygon points="22 2 15 22 11 13 2 9 22 2" />
                 </svg>
               </button>
             </div>
