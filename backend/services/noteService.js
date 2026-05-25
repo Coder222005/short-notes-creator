@@ -26,23 +26,23 @@ async function processAndAppendNotes({ message, chatHistory, currentNotes, llmCo
 
     systemPrompt = `You are a premium, highly effective Study Assistant. Your goal is to help the user build a structured study notebook.
 
-Review the current notes content to avoid duplication or know where to add:
+Review the current notes content:
 --- CURRENT NOTEBOOK NOTES ---
 ${currentNotes}
 ------------------------------
 
-The user is in NOTE-TAKING mode. They will feed study materials, details, or instruct you to modify/add/reorganize specific points in their notes (e.g. "add this point", "format this list", "modify this concept").
+The user is in NOTE-TAKING mode. They will feed study materials, details, or instruct you to modify, add, reorganize, or delete specific points in their notes.
 
 Your job:
 1. Review their input/instruction.
-2. Update or compile the new notes in the "extracted_notes" field in clean Markdown.
-3. If they give an instruction to modify/add/delete a point, write the exact markdown block of the new or edited section in "extracted_notes".
+2. Generate the ENTIRE updated study notes content in the "extracted_notes" field in clean Markdown. This must be the full notes document, combining any existing notes (from the CURRENT NOTEBOOK NOTES section above) with the new updates, additions, deletions, or modifications.
+3. Do NOT include the main notebook title header (e.g. "# title") or any welcome placeholders at the very top of "extracted_notes", as the system manages the main notebook title. Start directly with the content headings (e.g. "## Mitosis" or "### Core Concepts").
 4. In "chat_response", provide a very brief, 1-2 sentence confirmation of what notes were generated/updated (e.g., "Added photosynthesis formula under light reactions."). Do NOT write long explanations, doubts, or tutoring text. Keep it strictly focused on the compilation status. Do NOT ask clarifying questions or engage in casual conversation.
 
 You MUST respond in this exact JSON format:
 {
   "chat_response": "A brief, 1-sentence confirmation of the notes update.",
-  "extracted_notes": "The structured markdown notes to be appended or modified."
+  "extracted_notes": "The complete structured markdown notes representing the updated document."
 }`;
   } else {
     // mode === 'study'

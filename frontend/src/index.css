@@ -1636,3 +1636,104 @@ body.dragging-active {
   display: flex;
   flex-direction: column;
 }
+
+/* Code block container and copy-button styles */
+.code-block-wrapper {
+  margin: 16px 0;
+  border-radius: 12px;
+  background-color: var(--code-bg);
+  border: 1px solid var(--border-color);
+  overflow: hidden;
+}
+
+.code-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background-color: rgba(0, 0, 0, 0.2);
+  border-bottom: 1px solid var(--border-color);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.code-block-lang {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.code-block-copy-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-weight: 500;
+  font-size: 0.75rem;
+  transition: all 0.15s;
+}
+
+.code-block-copy-btn:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.code-block-wrapper pre {
+  margin: 0 !important;
+  padding: 16px;
+  overflow-x: auto;
+  border-radius: 0;
+  border: none;
+  background: transparent;
+}
+
+.code-block-wrapper code {
+  background: transparent !important;
+  padding: 0 !important;
+  color: inherit !important;
+  font-size: 0.88rem;
+  line-height: 1.6;
+}
+
+/* Notes empty placeholder styles */
+.notes-empty-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 48px 24px;
+  height: 100%;
+  color: var(--text-secondary);
+}
+
+.notes-empty-icon {
+  color: var(--accent-color);
+  background-color: var(--accent-color-subtle);
+  padding: 16px;
+  border-radius: 50%;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.notes-empty-placeholder h3 {
+  font-size: 1.2rem;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: var(--text-primary);
+}
+
+.notes-empty-placeholder p {
+  font-size: 0.88rem;
+  max-width: 320px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}

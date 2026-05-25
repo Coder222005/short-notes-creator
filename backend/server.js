@@ -212,7 +212,7 @@ app.post('/api/notebooks', (req, res) => {
     fs.writeFileSync(getMetaPath(id), JSON.stringify(meta, null, 2), 'utf8');
     fs.writeFileSync(getChatPath(id, 'compile'), JSON.stringify([], null, 2), 'utf8');
     fs.writeFileSync(getChatPath(id, 'study'), JSON.stringify([], null, 2), 'utf8');
-    fs.writeFileSync(getNotesPath(id), '# ' + name.trim() + '\n\nWelcome to your study notebook! Paste study materials in the chat to extract important notes here.\n\n', 'utf8');
+    fs.writeFileSync(getNotesPath(id), '# ' + name.trim() + '\n\n', 'utf8');
 
     res.status(201).json(meta);
   } catch (error) {
@@ -454,10 +454,12 @@ app.post('/api/notebooks/:id/accept-notes', (req, res) => {
       return res.status(404).json({ error: 'Target message not found' });
     }
 
-    // Append notes
+    // Overwrite notes (preserving the H1 notebook title at the top)
     let updatedNotes = currentNotes;
     if (notes && notes.trim() !== '') {
-      updatedNotes = currentNotes.trim() + '\n\n' + notes.trim() + '\n';
+      const titleMatch = currentNotes.match(/^#\s+.*$/m);
+      const title = titleMatch ? titleMatch[0] : `# Notebook`;
+      updatedNotes = title + '\n\n' + notes.trim() + '\n';
       fs.writeFileSync(notesFile, updatedNotes, 'utf8');
     }
 

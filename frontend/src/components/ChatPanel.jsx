@@ -1,6 +1,50 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ImportModal from './ImportModal';
 
+// Stateful Code Block component with Copy button
+export function CodeBlock({ codeText, lang }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(codeText);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="code-block-wrapper">
+      <div className="code-block-header">
+        <span className="code-block-lang">{lang || 'code'}</span>
+        <button
+          type="button"
+          className="code-block-copy-btn"
+          onClick={handleCopy}
+        >
+          {copied ? (
+            <>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ marginRight: '4px', verticalAlign: 'middle' }}>
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+              <span style={{ verticalAlign: 'middle' }}>Copied!</span>
+            </>
+          ) : (
+            <>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ marginRight: '4px', verticalAlign: 'middle' }}>
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+              </svg>
+              <span style={{ verticalAlign: 'middle' }}>Copy</span>
+            </>
+          )}
+        </button>
+      </div>
+      <pre>
+        <code className={lang}>{codeText}</code>
+      </pre>
+    </div>
+  );
+}
+
 // Lightweight custom Markdown parser
 export function MarkdownRenderer({ text }) {
   if (!text) return null;
@@ -79,9 +123,7 @@ export function MarkdownRenderer({ text }) {
     if (line.trim().startsWith('```')) {
       if (inCodeBlock) {
         elements.push(
-          <pre key={`pre-${index}`}>
-            <code className={codeLang}>{codeContent.join('\n')}</code>
-          </pre>
+          <CodeBlock key={`code-${index}`} codeText={codeContent.join('\n')} lang={codeLang} />
         );
         codeContent = [];
         inCodeBlock = false;
@@ -138,9 +180,7 @@ export function MarkdownRenderer({ text }) {
   }
   if (inCodeBlock) {
     elements.push(
-      <pre key="pre-final">
-        <code>{codeContent.join('\n')}</code>
-      </pre>
+      <CodeBlock key="code-final" codeText={codeContent.join('\n')} lang={codeLang} />
     );
   }
 
