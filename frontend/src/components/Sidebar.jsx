@@ -51,25 +51,20 @@ export default function Sidebar({
     <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
       <div className="sidebar-header">
         <div className="brand">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="url(#geminiGrad)" style={{ marginRight: '8px', flexShrink: 0 }}>
-            <defs>
-              <linearGradient id="geminiGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#1ba0fc" />
-                <stop offset="50%" stopColor="#9b72cb" />
-                <stop offset="100%" stopColor="#d96570" />
-              </linearGradient>
-            </defs>
-            <path d="M12 24c-.2 0-.4-.1-.5-.3C10 18.2 5.8 14 0 12.5v-1C5.8 10 10 5.8 11.5.3c.1-.2.3-.3.5-.3s.4.1.5.3C14 5.8 18.2 10 24 11.5v1C18.2 14 14 18.2 12.5 23.7c-.1.2-.3.3-.5.3z" />
+          {/* Warm book/notebook icon */}
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: isCollapsed ? 0 : '8px', flexShrink: 0, color: 'var(--accent-color)' }}>
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
           </svg>
           {!isCollapsed && <span>StudyNotebook</span>}
         </div>
         <button className="toggle-sidebar-btn" onClick={() => setIsCollapsed(!isCollapsed)} title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}>
           {isCollapsed ? (
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="9 18 15 12 9 6" />
             </svg>
           ) : (
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="15 18 9 12 15 6" />
             </svg>
           )}
@@ -77,7 +72,7 @@ export default function Sidebar({
       </div>
 
       <button className="new-notebook-btn" onClick={handleCreate}>
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <line x1="12" y1="5" x2="12" y2="19" />
           <line x1="5" y1="12" x2="19" y2="12" />
         </svg>
@@ -85,9 +80,9 @@ export default function Sidebar({
       </button>
 
       <div className="notebooks-list-container">
-        <h4 className="list-title">Recent Notebooks</h4>
+        <h4 className="list-title">Recent</h4>
         {notebooks.length === 0 ? (
-          <div className="sidebar-empty" style={{ padding: '12px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+          <div className="sidebar-empty" style={{ padding: '12px 10px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
             {!isCollapsed && "No notebooks yet"}
           </div>
         ) : (
@@ -102,7 +97,7 @@ export default function Sidebar({
                 onClick={() => !isEditing && onSelectNotebook(nb.id)}
               >
                 <div className="notebook-item-left">
-                  <svg className="notebook-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg className="notebook-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
                     <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
                   </svg>
@@ -121,8 +116,8 @@ export default function Sidebar({
                       style={{
                         background: 'var(--bg-tertiary)',
                         border: '1px solid var(--accent-color)',
-                        color: 'white',
-                        borderRadius: '4px',
+                        color: 'var(--text-primary)',
+                        borderRadius: '6px',
                         padding: '2px 6px',
                         fontSize: '0.85rem',
                         width: '100%',
@@ -174,7 +169,7 @@ export default function Sidebar({
 
       <div className="sidebar-footer">
         <button className="footer-btn" onClick={onOpenSettings}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="3" />
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
           </svg>

@@ -333,17 +333,15 @@ export default function ChatPanel({
 
             return (
               <div key={msg.id} className={`message-wrapper ${msg.role}`}>
-                <div className={`message-avatar ${msg.role}`}>
-                  {msg.role === 'user' ? 'U' : (
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M12 24c-.2 0-.4-.1-.5-.3C10 18.2 5.8 14 0 12.5v-1C5.8 10 10 5.8 11.5.3c.1-.2.3-.3.5-.3s.4.1.5.3C14 5.8 18.2 10 24 11.5v1C18.2 14 14 18.2 12.5 23.7c-.1.2-.3.3-.5.3z" />
+                {msg.role === 'assistant' && (
+                  <div className="message-avatar assistant">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 20h9" />
+                      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
                     </svg>
-                  )}
-                </div>
+                  </div>
+                )}
                 <div className="message-bubble">
-                  <span className="message-sender">
-                    {msg.role === 'user' ? 'You' : 'Gemini'}
-                  </span>
                   <div className="message-content">
                     {textBeforeQuiz && <MarkdownRenderer text={textBeforeQuiz} />}
                     {quizData && <InteractiveQuiz quizData={quizData} />}
@@ -354,7 +352,7 @@ export default function ChatPanel({
                         padding: '12px',
                         borderRadius: '8px',
                         border: '1px solid var(--border-color)',
-                        backgroundColor: 'rgba(255, 255, 255, 0.02)',
+                        backgroundColor: 'var(--accent-color-subtle)',
                         display: 'flex',
                         flexDirection: 'column',
                         gap: '8px'
@@ -364,7 +362,7 @@ export default function ChatPanel({
                             <span>📝</span> Proposed Study Notes
                           </span>
                           {msg.notesAdded ? (
-                            <span style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
+                            <span style={{ color: 'var(--quiz-correct)', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
                               ✓ Added to Notes
                             </span>
                           ) : (
@@ -392,12 +390,12 @@ export default function ChatPanel({
           {isLoading && (
             <div className="message-wrapper assistant">
               <div className="message-avatar assistant">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 24c-.2 0-.4-.1-.5-.3C10 18.2 5.8 14 0 12.5v-1C5.8 10 10 5.8 11.5.3c.1-.2.3-.3.5-.3s.4.1.5.3C14 5.8 18.2 10 24 11.5v1C18.2 14 14 18.2 12.5 23.7c-.1.2-.3.3-.5.3z" />
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 20h9" />
+                  <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
                 </svg>
               </div>
               <div className="message-bubble">
-                <span className="message-sender">Gemini</span>
                 <div className="loading-shimmer-container" style={{ marginTop: '8px' }}>
                   <div className="loading-shimmer-line long"></div>
                   <div className="loading-shimmer-line medium"></div>
@@ -445,9 +443,9 @@ export default function ChatPanel({
                 disabled={input.trim() === '' || isLoading}
                 title="Send"
               >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="22" y1="2" x2="11" y2="13" />
-                  <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="12" y1="19" x2="12" y2="5" />
+                  <polyline points="5 12 12 5 19 12" />
                 </svg>
               </button>
             </div>
