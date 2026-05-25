@@ -587,15 +587,26 @@ function InteractiveQuiz({ quizData }) {
   const scorePercentage = Math.round((totalCorrect / quizData.questions.length) * 100);
 
   return (
-    <div className="interactive-quiz-container">
-      <div className="quiz-header">
-        <span className="quiz-title">📝 Practice Quiz</span>
-        {isSubmitted && (
+    <div className="artifact-card" style={{ marginTop: '16px', maxWidth: '100%', width: '100%' }}>
+      <div className="artifact-card-header" style={{ padding: '12px 16px' }}>
+        <span className="artifact-card-title">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--accent-color)' }}>
+            <path d="M22 10v6M2 10l10-5 10 5-10 5z" />
+            <path d="M6 12v5c0 2 2 3 6 3s6-1 6-3v-5" />
+          </svg>
+          Practice Quiz
+        </span>
+        {isSubmitted ? (
           <span className={`quiz-score-badge ${scorePercentage >= 80 ? 'good' : scorePercentage >= 50 ? 'average' : 'poor'}`}>
             Score: {totalCorrect}/{quizData.questions.length} ({scorePercentage}%)
           </span>
+        ) : (
+          <span className="artifact-added-badge" style={{ backgroundColor: 'var(--accent-color-subtle)', color: 'var(--accent-color)' }}>
+            Pending Answers
+          </span>
         )}
       </div>
+      <div className="artifact-card-body" style={{ maxHeight: 'none', overflowY: 'visible', padding: '20px' }}>
 
       <div className="quiz-questions-list">
         {quizData.questions.map((q, qIdx) => {
@@ -676,40 +687,69 @@ function InteractiveQuiz({ quizData }) {
       </div>
 
       {isSubmitted && showAnalysis && (
-        <div className="quiz-analysis-panel">
-          <div className="analysis-title">📊 Concept Weakness Analysis</div>
-          <p className="analysis-sub">We analyzed your answers to find concepts that need focus:</p>
-          <div className="analysis-metrics-list">
-            {Object.entries(conceptStats).map(([concept, stats]) => {
-              const pct = Math.round((stats.correct / stats.total) * 100);
-              let statusLabel = 'Mastered';
-              let statusClass = 'mastered';
-              if (pct < 50) {
-                statusLabel = 'Needs Work (Review recommended!)';
-                statusClass = 'needs-work';
-              } else if (pct < 80) {
-                statusLabel = 'Developing';
-                statusClass = 'developing';
-              }
+        <div className="quiz-analysis-panel" style={{ marginTop: '16px' }}>
+          <div className="analysis-title">📊 Concept Weakness & Blinders Analysis</div>
+          
+          {Object.entries(conceptStats).filter(([_, stats]) => stats.correct < stats.total).length === 0 ? (
+            <p className="analysis-sub" style={{ color: 'var(--quiz-correct)', fontWeight: 500, margin: '8px 0 0 0' }}>
+              🎉 Perfect score! You have no weak topics or blinders for this quiz.
+            </p>
+          ) : (
+            <>
+              <p className="analysis-sub">Misconceptions ("blinders") and topics needing review:</p>
+              <div className="analysis-metrics-list" style={{ marginTop: '12px' }}>
+                {Object.entries(conceptStats)
+                  .filter(([_, stats]) => stats.correct < stats.total)
+                  .map(([concept, stats]) => {
+                    const pct = Math.round((stats.correct / stats.total) * 100);
+                    const wrongQuestions = quizData.questions.filter((q, qIdx) => {
+                      const isThisConcept = (q.concept || "General Knowledge") === concept;
+                      const isWrong = selectedAnswers[qIdx] !== q.answerIndex;
+                      return isThisConcept && isWrong;
+                    });
 
-              return (
-                <div key={concept} className="analysis-metric-row">
-                  <div className="metric-info">
-                    <span className="metric-name">{concept}</span>
-                    <span className={`metric-badge ${statusClass}`}>{statusLabel}</span>
-                  </div>
-                  <div className="metric-progress-bar-container">
-                    <div className="metric-progress-bar-bg">
-                      <div className={`metric-progress-bar-fill ${statusClass}`} style={{ width: `${pct}%` }}></div>
-                    </div>
-                    <span className="metric-percentage">{pct}%</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                    return (
+                      <div key={concept} className="analysis-metric-row" style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '12px', marginBottom: '12px' }}>
+                        <div className="metric-info">
+                          <span className="metric-name" style={{ fontWeight: 600 }}>{concept}</span>
+                          <span className="metric-badge needs-work" style={{ backgroundColor: 'var(--quiz-incorrect-bg)', color: 'var(--quiz-incorrect)' }}>
+                            Needs Work ({pct}% Correct)
+                          </span>
+                        </div>
+                        <div className="metric-progress-bar-container" style={{ margin: '8px 0' }}>
+                          <div className="metric-progress-bar-bg">
+                            <div className="metric-progress-bar-fill needs-work" style={{ width: `${pct}%`, backgroundColor: 'var(--quiz-incorrect)' }}></div>
+                          </div>
+                        </div>
+                        
+                        <div className="blinders-list" style={{ marginTop: '8px', paddingLeft: '12px', borderLeft: '2px solid var(--quiz-incorrect)' }}>
+                          <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)' }}>Misconceptions / Blinders:</span>
+                          {wrongQuestions.map((q, wIdx) => {
+                            const qOriginalIdx = quizData.questions.indexOf(q);
+                            const userAns = q.options[selectedAnswers[qOriginalIdx]];
+                            const correctAns = q.options[q.answerIndex];
+                            return (
+                              <div key={wIdx} style={{ fontSize: '0.75rem', marginTop: '6px', color: 'var(--text-secondary)' }}>
+                                <p style={{ fontWeight: 500, margin: '2px 0' }}><strong>Q:</strong> {q.question}</p>
+                                <p style={{ color: 'var(--quiz-incorrect)', margin: '2px 0' }}>
+                                  ⚠️ Selected: "{userAns}"
+                                </p>
+                                <p style={{ color: 'var(--quiz-correct)', margin: '2px 0' }}>
+                                  ✓ Correct: "{correctAns}"
+                                </p>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </>
+          )}
         </div>
       )}
+      </div>
     </div>
   );
 }
