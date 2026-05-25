@@ -23,8 +23,38 @@ Powered by a unified local key vault that supports **Google Gemini**, **Groq**, 
 
 StudyNotebook is cross-platform and fully supports **macOS**, **Linux**, and **Windows**. Make sure you have [Node.js (version 20+)](https://nodejs.org/) installed before starting.
 
-### Option A: macOS & Linux
-1. Open your terminal in the project directory.
+### Option A: Packaged Desktop App (Recommended for macOS & Windows)
+
+Run StudyNotebook as a fully self-contained desktop app with localized databases and offline compilation fallbacks.
+
+#### 1. macOS (Apple Silicon M1/M2/M3/M4)
+We have pre-packaged the macOS arm64 DMG installer:
+👉 **[StudyNotebook-1.0.0-arm64.dmg](file:///Users/charitha/short-notes-creator/dist-desktop/StudyNotebook-1.0.0-arm64.dmg)** (located in `dist-desktop/`)
+
+* **How to Install:**
+  1. Open the [StudyNotebook-1.0.0-arm64.dmg](file:///Users/charitha/short-notes-creator/dist-desktop/StudyNotebook-1.0.0-arm64.dmg) installer.
+  2. Drag the **StudyNotebook** application icon into your `/Applications` directory.
+  3. Open your Applications folder, right-click `StudyNotebook`, select **Open**, and confirm (this bypasses the unsigned developer Gatekeeper warning).
+* **How to Rebuild:**
+  Run the automated script in terminal:
+  ```bash
+  chmod +x build-desktop.sh
+  ./build-desktop.sh
+  ```
+
+#### 2. Windows (.exe Setup Installer)
+To compile a Windows executable installer directly:
+1. Open Command Prompt (`cmd.exe`) in the project root folder.
+2. Run the packaging batch script:
+   ```cmd
+   build-desktop.bat
+   ```
+3. Once completed, the standalone installer `StudyNotebook Setup 1.0.0.exe` will be located under the `dist-desktop/` folder. Run it to install the desktop application.
+
+---
+
+### Option B: Local Web Server (macOS & Linux)
+1. Open terminal in the project directory.
 2. Make scripts executable (if needed):
    ```bash
    chmod +x start.sh stop.sh
@@ -34,26 +64,28 @@ StudyNotebook is cross-platform and fully supports **macOS**, **Linux**, and **W
    ./start.sh
    ```
 4. Access the web app at: **http://localhost:3000**
-   > If port 3000 was busy, check the terminal output — it will display the actual port.
+   > If port 3000 is busy, check the terminal output for the active fallback port.
 5. Stop the application:
    ```bash
    ./stop.sh
    ```
 
-### Option B: Windows
+---
+
+### Option C: Local Web Server (Windows)
 1. Open Command Prompt (`cmd.exe`) or PowerShell.
-2. Navigate to the project folder.
-3. Launch the application with the 1-click script:
+2. Navigate to the project directory.
+3. Launch the application:
    ```cmd
    start.bat
    ```
 4. Access the web app at: **http://localhost:3000**
-   > If port 3000 was busy, the server automatically falls back to 3002, 3003, or 3004. Check the console output for the actual port.
+   > If port 3000 is busy, the server automatically falls back to 3002, 3003, or 3004. Check the console output.
 5. Stop the application:
    ```cmd
    stop.bat
    ```
-   Or simply close the command prompt window.
+   Or simply close the console window.
 
 ---
 
@@ -132,11 +164,15 @@ If you attempt to push the repository to GitHub and receive a `remote: Repositor
 ```
 short-notes-creator/
 ├── package.json         # Root scripts (setup, build, start, dev)
+├── main.js              # Electron main process (desktop window & background servers launcher)
+├── build-desktop.sh     # macOS/Linux automated desktop packaging compiler script
+├── build-desktop.bat    # Windows automated desktop packaging compiler script
 ├── start.sh             # macOS/Linux setup, build, and launch script
 ├── start.bat            # Windows setup, build, and launch script
 ├── stop.sh              # macOS/Linux port cleanup and stop script
 ├── stop.bat             # Windows port cleanup and stop script
 ├── README.md            # This file
+├── dist-desktop/        # Packaged installers output folder (DMG/EXE/AppImage)
 ├── backend/
 │   ├── server.js        # Node Gateway (serves React + APIs, auto port fallback)
 │   ├── services/
