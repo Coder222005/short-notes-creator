@@ -286,11 +286,11 @@ export default function ChatPanel({
 
       {chatHistory.length === 0 ? (
         <div className="welcome-container">
-          <div className="welcome-gradient-text">Hello Student</div>
+          <div className="welcome-gradient-text">Hello, Student</div>
           <div className="welcome-subtext">
             {chatMode === 'study'
-              ? "Welcome to Study Mode! Review concepts, ask clarification questions, or ask me for a practice quiz."
-              : `Give me study materials. I will automatically extract and format study notes for **${notebookName}**!`}
+              ? "How can I help you review today?"
+              : "Paste your study materials to compile revision notes."}
           </div>
           <div className="cards-grid">
             {activePrompts.map((card, idx) => (
@@ -334,11 +334,15 @@ export default function ChatPanel({
             return (
               <div key={msg.id} className={`message-wrapper ${msg.role}`}>
                 <div className={`message-avatar ${msg.role}`}>
-                  {msg.role === 'user' ? 'U' : 'AI'}
+                  {msg.role === 'user' ? 'U' : (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12 24c-.2 0-.4-.1-.5-.3C10 18.2 5.8 14 0 12.5v-1C5.8 10 10 5.8 11.5.3c.1-.2.3-.3.5-.3s.4.1.5.3C14 5.8 18.2 10 24 11.5v1C18.2 14 14 18.2 12.5 23.7c-.1.2-.3.3-.5.3z" />
+                    </svg>
+                  )}
                 </div>
                 <div className="message-bubble">
                   <span className="message-sender">
-                    {msg.role === 'user' ? 'You' : 'Gemini Assistant'}
+                    {msg.role === 'user' ? 'You' : 'Gemini'}
                   </span>
                   <div className="message-content">
                     {textBeforeQuiz && <MarkdownRenderer text={textBeforeQuiz} />}
@@ -387,9 +391,13 @@ export default function ChatPanel({
 
           {isLoading && (
             <div className="message-wrapper assistant">
-              <div className="message-avatar assistant">AI</div>
+              <div className="message-avatar assistant">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 24c-.2 0-.4-.1-.5-.3C10 18.2 5.8 14 0 12.5v-1C5.8 10 10 5.8 11.5.3c.1-.2.3-.3.5-.3s.4.1.5.3C14 5.8 18.2 10 24 11.5v1C18.2 14 14 18.2 12.5 23.7c-.1.2-.3.3-.5.3z" />
+                </svg>
+              </div>
               <div className="message-bubble">
-                <span className="message-sender">Gemini Assistant</span>
+                <span className="message-sender">Gemini</span>
                 <div className="loading-shimmer-container" style={{ marginTop: '8px' }}>
                   <div className="loading-shimmer-line long"></div>
                   <div className="loading-shimmer-line medium"></div>
@@ -406,6 +414,13 @@ export default function ChatPanel({
       <div className="chat-input-wrapper">
         <form onSubmit={handleSubmit} className="chat-input-container">
           <div className="chat-input-row">
+            <button type="button" className="input-action-btn" title="Upload image or file (placeholder)">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                <circle cx="8.5" cy="8.5" r="1.5" />
+                <polyline points="21 15 16 10 5 21" />
+              </svg>
+            </button>
             <textarea
               ref={textareaRef}
               rows={1}
@@ -416,17 +431,26 @@ export default function ChatPanel({
               className="chat-textarea"
               disabled={isLoading}
             />
-            <button
-              type="submit"
-              className="send-msg-btn"
-              disabled={input.trim() === '' || isLoading}
-              title="Send"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="22" y1="2" x2="11" y2="13" />
-                <polygon points="22 2 15 22 11 13 2 9 22 2" />
-              </svg>
-            </button>
+            <div className="input-right-actions">
+              <button type="button" className="input-action-btn" title="Use microphone (placeholder)">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                  <line x1="12" y1="19" x2="12" y2="22" />
+                </svg>
+              </button>
+              <button
+                type="submit"
+                className="send-msg-btn"
+                disabled={input.trim() === '' || isLoading}
+                title="Send"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13" />
+                  <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                </svg>
+              </button>
+            </div>
           </div>
           <div className="chat-actions-row">
             <div className="chat-action-left-btns" style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
@@ -459,6 +483,9 @@ export default function ChatPanel({
             </div>
           </div>
         </form>
+        <div className="chat-disclaimer">
+          StudyNotebook may display inaccurate info, including about people, so double-check its responses.
+        </div>
       </div>
 
       <ImportModal

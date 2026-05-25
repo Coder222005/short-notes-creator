@@ -51,10 +51,17 @@ export default function Sidebar({
     <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
       <div className="sidebar-header">
         <div className="brand">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '4px' }}>
-            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="url(#geminiGrad)" style={{ marginRight: '8px', flexShrink: 0 }}>
+            <defs>
+              <linearGradient id="geminiGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#1ba0fc" />
+                <stop offset="50%" stopColor="#9b72cb" />
+                <stop offset="100%" stopColor="#d96570" />
+              </linearGradient>
+            </defs>
+            <path d="M12 24c-.2 0-.4-.1-.5-.3C10 18.2 5.8 14 0 12.5v-1C5.8 10 10 5.8 11.5.3c.1-.2.3-.3.5-.3s.4.1.5.3C14 5.8 18.2 10 24 11.5v1C18.2 14 14 18.2 12.5 23.7c-.1.2-.3.3-.5.3z" />
           </svg>
-          StudyNotebook
+          {!isCollapsed && <span>StudyNotebook</span>}
         </div>
         <button className="toggle-sidebar-btn" onClick={() => setIsCollapsed(!isCollapsed)} title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}>
           {isCollapsed ? (
