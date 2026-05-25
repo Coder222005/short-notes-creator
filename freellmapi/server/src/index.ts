@@ -6,7 +6,7 @@ import { startHealthChecker } from './services/health.js';
 const PORT = process.env.PORT ?? 3001;
 
 async function main() {
-  initDb();
+  initDb(process.env.FREELLM_DB_PATH);
   const app = createApp();
 
   app.listen(Number(PORT), '0.0.0.0', () => {

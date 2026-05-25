@@ -15,7 +15,7 @@ let ACTIVE_PORT = null;
 app.use(cors());
 app.use(express.json());
 
-const DATA_DIR = path.join(__dirname, 'data');
+const DATA_DIR = process.env.PORTABLE_DATA_DIR || path.join(__dirname, 'data');
 const NOTEBOOKS_DIR = path.join(DATA_DIR, 'notebooks');
 
 // Ensure directories exist

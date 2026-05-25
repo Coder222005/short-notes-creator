@@ -28,3 +28,6 @@ backend/data/notebooks/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Desktop production builds
+dist-desktop/
