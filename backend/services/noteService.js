@@ -123,10 +123,24 @@ You MUST respond in this exact JSON format:
       }
     }
 
-    return {
-      reply: parsed.chat_response || "Study notes updated!",
-      notesToAppend: parsed.extracted_notes || ""
-    };
+    // Mode-aware response routing and fallback defaults
+    if (mode === 'study') {
+      let replyContent = (parsed.chat_response || "").trim();
+      // If LLM mistakenly placed the quiz or tutorial content in extracted_notes, move it to reply
+      if (parsed.extracted_notes && parsed.extracted_notes.trim() !== "") {
+        replyContent = replyContent ? replyContent + "\n\n" + parsed.extracted_notes.trim() : parsed.extracted_notes.trim();
+      }
+      return {
+        reply: replyContent || "Here is the response to help you study:",
+        notesToAppend: ""
+      };
+    } else {
+      // mode === 'compile'
+      return {
+        reply: parsed.chat_response || "Proposed study notes draft generated.",
+        notesToAppend: parsed.extracted_notes || ""
+      };
+    }
 
   } catch (error) {
     console.error("Error in processAndAppendNotes:", error);
