@@ -639,6 +639,14 @@ app.post('/api/notebooks/:id/import-chat', async (req, res) => {
     let chatHistory = JSON.parse(fs.readFileSync(chatFile, 'utf8'));
     let currentNotes = fs.readFileSync(notesFile, 'utf8');
 
+    // Strip title from currentNotes to work with processAndAppendNotes correctly
+    const titleMatch = currentNotes.match(/^#\s+.*$/m);
+    const title = titleMatch ? titleMatch[0] : '';
+    let currentNotesNoTitle = currentNotes;
+    if (title) {
+      currentNotesNoTitle = currentNotes.substring(title.length).trim();
+    }
+
     const stampedMessages = parsedMessages.map((m, idx) => ({
       id: `msg_imported_${Date.now()}_${idx}`,
       role: m.role,
@@ -649,8 +657,7 @@ app.post('/api/notebooks/:id/import-chat', async (req, res) => {
 
     // Process in chunks of 8 messages to prevent context window overflow
     const CHUNK_SIZE = 8;
-    let updatedNotes = currentNotes;
-    let newAppendedNotes = '';
+    let updatedNotes = currentNotesNoTitle;
 
     console.log(`Processing imported chat of ${stampedMessages.length} messages in chunks of ${CHUNK_SIZE}...`);
 
@@ -661,14 +668,14 @@ app.post('/api/notebooks/:id/import-chat', async (req, res) => {
         const { notesToAppend } = await processAndAppendNotes({
           message: 'Process this segment of imported chat log and extract key points.',
           chatHistory: chunk,
-          currentNotes: updatedNotes,
+          currentNotes: title + '\n\n' + updatedNotes,
           llmConfig,
           mode: 'compile'
         });
 
         if (notesToAppend && notesToAppend.trim() !== '') {
-          updatedNotes = updatedNotes.trim() + '\n\n' + notesToAppend.trim() + '\n';
-          newAppendedNotes = newAppendedNotes.trim() + '\n\n' + notesToAppend.trim() + '\n';
+          // processAndAppendNotes returns the entire notes without title
+          updatedNotes = notesToAppend.trim();
         }
       } catch (err) {
         console.error(`Error processing import chunk starting at index ${i}:`, err.message);
@@ -677,8 +684,22 @@ app.post('/api/notebooks/:id/import-chat', async (req, res) => {
 
     chatHistory.push(...stampedMessages);
 
+    // If notes changed, push an assistant message containing the draft card with the "Add to Notes" button
+    const notesChanged = updatedNotes.trim() !== currentNotesNoTitle.trim();
+    if (notesChanged && updatedNotes.trim() !== '') {
+      const assistantMessage = {
+        id: `msg_imported_assistant_${Date.now()}`,
+        role: 'assistant',
+        content: `I've analyzed the imported conversation and compiled the updated study notes. Review the changes below and click "Add to Notes" to apply them to your notebook.`,
+        notesDraft: updatedNotes.trim(),
+        notesAdded: false,
+        mode: 'compile',
+        timestamp: new Date().toISOString()
+      };
+      chatHistory.push(assistantMessage);
+    }
+
     fs.writeFileSync(chatFile, JSON.stringify(chatHistory, null, 2), 'utf8');
-    fs.writeFileSync(notesFile, updatedNotes, 'utf8');
 
     const chatStudyFile = getChatPath(id, 'study');
     if (!fs.existsSync(chatStudyFile)) fs.writeFileSync(chatStudyFile, JSON.stringify([], null, 2), 'utf8');
@@ -687,8 +708,8 @@ app.post('/api/notebooks/:id/import-chat', async (req, res) => {
     res.json({
       success: true,
       importedCount: stampedMessages.length,
-      appendedNotes: newAppendedNotes,
-      updatedNotes,
+      appendedNotes: notesChanged ? updatedNotes.trim() : '',
+      updatedNotes: currentNotes, // original notes from the file
       chatCompile: chatHistory,
       chatStudy,
     });

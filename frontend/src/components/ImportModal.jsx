@@ -65,7 +65,7 @@ export default function ImportModal({ isOpen, onClose, notebookId, onImportSucce
 
       if (res.ok) {
         const data = await res.json();
-        alert(`Successfully imported ${data.importedCount} messages! Notes updated successfully.`);
+        alert(`Successfully imported ${data.importedCount} messages! Review the compiled notes in the chat panel and click "Add to Notes" to save them.`);
         onImportSuccess(data);
         onClose();
       } else {

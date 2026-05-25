@@ -37,7 +37,8 @@ Your job:
 1. Review their input/instruction.
 2. Generate the ENTIRE updated study notes content in the "extracted_notes" field in clean Markdown. This must be the full notes document, combining any existing notes (from the CURRENT NOTEBOOK NOTES section above) with the new updates, additions, deletions, or modifications.
 3. Do NOT include the main notebook title header (e.g. "# title") or any welcome placeholders at the very top of "extracted_notes", as the system manages the main notebook title. Start directly with the content headings (e.g. "## Mitosis" or "### Core Concepts").
-4. In "chat_response", provide a very brief, 1-2 sentence confirmation of what notes were generated/updated (e.g., "Added photosynthesis formula under light reactions."). Do NOT write long explanations, doubts, or tutoring text. Keep it strictly focused on the compilation status. Do NOT ask clarifying questions or engage in casual conversation.
+4. "extracted_notes" MUST contain the entire updated notes document. Do NOT leave "extracted_notes" empty. Even if you are just confirming a change, you MUST output the complete updated notes document inside the "extracted_notes" field so the system can display the updated artifact card.
+5. In "chat_response", provide a very brief, 1-2 sentence confirmation of what notes were generated/updated (e.g., "Added photosynthesis formula under light reactions."). Do NOT write long explanations, doubts, or tutoring text. Keep it strictly focused on the compilation status. Do NOT ask clarifying questions or engage in casual conversation.
 
 You MUST respond in this exact JSON format:
 {
@@ -113,12 +114,103 @@ You MUST respond in this exact JSON format:
         extracted_notes: ""
       };
 
-      // Heuristic: If compile mode and there are markdown lists/headers in the text, extract it
-      if (mode === 'compile' && (rawResponse.includes('###') || rawResponse.includes('* ') || rawResponse.includes('- '))) {
-        const firstHeaderIdx = rawResponse.indexOf('###');
-        if (firstHeaderIdx !== -1) {
-          parsed.chat_response = rawResponse.substring(0, firstHeaderIdx).trim();
-          parsed.extracted_notes = rawResponse.substring(firstHeaderIdx).trim();
+      if (mode === 'compile') {
+        // 1. Try to extract from a JSON-like structure first (e.g. if LLM returned malformed JSON containing "extracted_notes": "...")
+        const extNotesRegex = /"extracted_notes"\s*:\s*"/g;
+        const matchNotes = extNotesRegex.exec(rawResponse);
+        let extractedFromJSON = false;
+        
+        if (matchNotes) {
+          const startIdx = extNotesRegex.lastIndex;
+          let endIdx = startIdx;
+          let escaped = false;
+          while (endIdx < rawResponse.length) {
+            const char = rawResponse[endIdx];
+            if (char === '\\') {
+              escaped = !escaped;
+            } else if (char === '"' && !escaped) {
+              break;
+            } else {
+              escaped = false;
+            }
+            endIdx++;
+          }
+          if (endIdx < rawResponse.length) {
+            let notesText = rawResponse.substring(startIdx, endIdx);
+            try {
+              notesText = notesText
+                .replace(/\\n/g, '\n')
+                .replace(/\\t/g, '\t')
+                .replace(/\\"/g, '"')
+                .replace(/\\\\/g, '\\')
+                .replace(/\\u([0-9a-fA-F]{4})/g, (match, grp) => String.fromCharCode(parseInt(grp, 16)));
+              
+              parsed.extracted_notes = notesText;
+              extractedFromJSON = true;
+              
+              // Also try to extract chat_response from the same JSON-like structure
+              const chatRespRegex = /"chat_response"\s*:\s*"/g;
+              const matchChat = chatRespRegex.exec(rawResponse);
+              if (matchChat) {
+                const cStartIdx = chatRespRegex.lastIndex;
+                let cEndIdx = cStartIdx;
+                let cEscaped = false;
+                while (cEndIdx < rawResponse.length) {
+                  const char = rawResponse[cEndIdx];
+                  if (char === '\\') {
+                    cEscaped = !cEscaped;
+                  } else if (char === '"' && !cEscaped) {
+                    break;
+                  } else {
+                    cEscaped = false;
+                  }
+                  cEndIdx++;
+                }
+                if (cEndIdx < rawResponse.length) {
+                  parsed.chat_response = rawResponse.substring(cStartIdx, cEndIdx)
+                    .replace(/\\n/g, '\n')
+                    .replace(/\\t/g, '\t')
+                    .replace(/\\"/g, '"')
+                    .replace(/\\\\/g, '\\');
+                }
+              }
+            } catch (e) {
+              console.warn("Failed to extract notes from JSON-like structure:", e);
+            }
+          }
+        }
+
+        // 2. If we couldn't extract from JSON-like fields, fall back to matching headers/lists in raw markdown
+        if (!extractedFromJSON) {
+          // Normalize escaped newlines to literal newlines if needed
+          let tempText = rawResponse;
+          if (!rawResponse.includes('\n') && rawResponse.includes('\\n')) {
+            tempText = rawResponse.replace(/\\n/g, '\n');
+          }
+          
+          const match = tempText.match(/^(?:#+\s+|[*+-]\s+)/m);
+          if (match) {
+            const headerIdx = match.index;
+            parsed.chat_response = tempText.substring(0, headerIdx).trim();
+            
+            let notesText = tempText.substring(headerIdx).trim();
+            // Clean up trailing JSON artifacts
+            notesText = notesText.replace(/["'}\s,]+$/, '').trim();
+            
+            // Unescape JSON string characters
+            try {
+              notesText = notesText
+                .replace(/\\n/g, '\n')
+                .replace(/\\t/g, '\t')
+                .replace(/\\"/g, '"')
+                .replace(/\\\\/g, '\\')
+                .replace(/\\u([0-9a-fA-F]{4})/g, (match, grp) => String.fromCharCode(parseInt(grp, 16)));
+            } catch (e) {
+              console.warn("Failed to unescape JSON string:", e);
+            }
+            
+            parsed.extracted_notes = notesText;
+          }
         }
       }
     }
